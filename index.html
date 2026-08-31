@@ -88,17 +88,17 @@
     .row input { width: auto; flex: 1 1 9rem; }
   }
   @media (orientation: landscape) and (max-height: 500px) {
-    html, body { overflow: hidden; height: 100%; }
-    body { padding: 6px 10px; justify-content: flex-start; }
-    h1 { font-size: .9rem; margin: 0 0 .12rem; }
-    .sub { font-size: .7rem; margin: 0 0 .15rem; }
-    .credit { margin: 0 0 .2rem; font-size: .65rem; }
-    .you { font-size: .7rem; margin-bottom: .1rem; }
-    .score { margin-bottom: .15rem; gap: 1.5rem; }
-    .score b { font-size: 1.25rem; }
-    canvas { max-height: calc(100dvh - 5.4rem); }
-    .hud { margin-top: .2rem; font-size: .75rem; }
-    #rematch { margin-top: .3rem; }
+    html, body { overflow: hidden; height: 100%; max-height: 100%; }
+    body { padding: 4px 10px; justify-content: flex-start; min-height: 0; }
+    h1 { font-size: .85rem; margin: 0 0 .08rem; }
+    .sub { font-size: .65rem; margin: 0 0 .08rem; }
+    .credit { margin: 0 0 .12rem; font-size: .6rem; }
+    .you { font-size: .65rem; margin-bottom: .05rem; }
+    .score { margin-bottom: .08rem; gap: 1.4rem; }
+    .score b { font-size: 1.15rem; }
+    canvas { max-height: calc(100dvh - 6.6rem); }
+    .hud { display: none; }
+    #rematch { margin-top: .2rem; }
     body.touch-ui #game.on { padding-bottom: 0; }
   }
   .stick {
