@@ -24,8 +24,15 @@
   }
   h1 { font-size: 1.1rem; letter-spacing: .18em; text-transform: uppercase; margin: 0 0 .35rem; font-weight: 700; }
   .sub { color: var(--muted); font-size: .8rem; margin: 0 0 .35rem; text-align: center; }
+  .pitch {
+    font-size: .88rem;
+    color: #9aa6ba;
+    margin: 0 0 .7rem;
+    letter-spacing: normal;
+    text-transform: none;
+  }
   .credit {
-    margin: 0 0 .8rem; color: var(--muted); font-size: .75rem; letter-spacing: .04em;
+    margin: 1.35rem 0 0; color: var(--muted); font-size: .75rem; letter-spacing: .04em;
   }
   .score { display: flex; gap: 2.5rem; align-items: baseline; margin-bottom: .6rem; font-variant-numeric: tabular-nums; }
   .score b { font-size: 2rem; }
@@ -54,10 +61,10 @@
   #lobbyStart { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: 100%; min-width: 0; }
   #lobby.waiting #lobbyStart { display: none; }
   #create { width: 100%; max-width: 100%; }
-  .row { display: flex; gap: .5rem; width: 100%; min-width: 0; align-items: stretch; }
+  .row { display: flex; flex-wrap: nowrap; gap: .5rem; width: 100%; min-width: 0; align-items: stretch; }
   .row input {
-    flex: 1 1 0; min-width: 0; width: 0; font: inherit; font-size: 1.2rem; letter-spacing: .16em; text-transform: uppercase;
-    text-align: center; padding: .6rem; background: #121826; color: var(--ink); border: 1px solid #3a4b66;
+    flex: 1 1 0; min-width: 0; width: 0; font: inherit; font-size: 1.2rem; letter-spacing: .08em; text-transform: uppercase;
+    text-align: center; padding: .55rem .45rem; background: #121826; color: var(--ink); border: 1px solid #3a4b66;
   }
   #join { flex: 0 0 auto; padding: .65rem .9rem; }
   .codebig { font-size: 3.2rem; letter-spacing: .28em; font-weight: 800; margin: .4rem 0; max-width: 100%; }
@@ -83,16 +90,13 @@
   @media (orientation: portrait) {
     body.touch-ui #game.on { padding-bottom: 7.5rem; }
   }
-  @media (max-width: 400px) {
-    .row { flex-wrap: wrap; }
-    .row input { width: auto; flex: 1 1 9rem; }
-  }
   @media (orientation: landscape) and (max-height: 500px) {
     html, body { overflow: hidden; height: 100%; max-height: 100%; }
     body { padding: 4px 10px; justify-content: flex-start; min-height: 0; }
     h1 { font-size: .85rem; margin: 0 0 .08rem; }
     .sub { font-size: .65rem; margin: 0 0 .08rem; }
-    .credit { margin: 0 0 .12rem; font-size: .6rem; }
+    .pitch { font-size: .72rem; margin: 0 0 .35rem; }
+    .credit { margin: .55rem 0 0; font-size: .6rem; }
     .score { margin-bottom: .08rem; gap: 1.4rem; }
     .score b { font-size: 1.15rem; }
     canvas { max-height: calc(100dvh - 6.6rem); }
@@ -137,8 +141,7 @@
 </head>
 <body>
   <h1>Shove</h1>
-  <p class="sub">First to 3. Knock them off the stage.</p>
-  <p class="credit">Static Crown</p>
+  <p class="sub pitch">First to 3. Knock them off the stage.</p>
   <div id="lobby" class="lobby">
     <div id="lobbyStart">
       <button type="button" id="create">Create room</button>
@@ -151,6 +154,7 @@
     <p class="sub" id="wait" hidden>Waiting for player 2. Share this page or the code.</p>
     <button type="button" class="ghost" id="copylink" hidden>Copy link</button>
     <div class="err" id="err"></div>
+    <p class="credit">A Static Crown game</p>
   </div>
   <div id="game">
     <div class="score">
