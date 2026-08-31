@@ -72,7 +72,7 @@
   body.touch-ui .pads {
     display: flex !important;
     position: fixed; left: 0; right: 0; bottom: 0;
-    justify-content: space-between; align-items: flex-end;
+    justify-content: space-between; align-items: center;
     padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 0px));
   }
   @media (hover: hover) and (pointer: fine) {
@@ -93,7 +93,6 @@
     h1 { font-size: .85rem; margin: 0 0 .08rem; }
     .sub { font-size: .65rem; margin: 0 0 .08rem; }
     .credit { margin: 0 0 .12rem; font-size: .6rem; }
-    .you { font-size: .65rem; margin-bottom: .05rem; }
     .score { margin-bottom: .08rem; gap: 1.4rem; }
     .score b { font-size: 1.15rem; }
     canvas { max-height: calc(100dvh - 6.6rem); }
@@ -128,7 +127,6 @@
     font-weight: 800; letter-spacing: .08em; border: 0;
   }
   .shove-btn.held { background: #9ad; }
-  .you { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: .3rem; }
   @media (orientation: landscape) and (max-height: 500px) {
     .stick { width: 104px; height: 104px; }
     .stick-base { width: 92px; height: 92px; }
@@ -155,7 +153,6 @@
     <div class="err" id="err"></div>
   </div>
   <div id="game">
-    <div class="you" id="youlabel"></div>
     <div class="score">
       <div class="p1">P1 <b id="s1">0</b></div>
       <div class="p2">P2 <b id="s2">0</b></div>
@@ -379,8 +376,6 @@ function onMsg(msg) {
 function enterGame() {
   document.getElementById("lobby").classList.add("hid");
   document.getElementById("game").classList.add("on");
-  document.getElementById("youlabel").textContent = slot === 1 ? "You are P1 · blue" : "You are P2 · red";
-  document.getElementById("youlabel").className = "you " + (slot === 1 ? "p1" : "p2");
   document.getElementById("roomhud").textContent = "Room " + code;
   if (slot === 1) resetMatch();
 }
@@ -514,6 +509,11 @@ function drawPlayer(p) {
   ctx.fillStyle = p.alive ? p.color : "#2a2f3a";
   const r = p.alive ? (p.shoving > 0 ? PR + 3 : PR) : PR * 0.7;
   ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  if (slot && p.id === slot) {
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  }
   ctx.fillStyle = "#0b0d12";
   ctx.beginPath(); ctx.arc(Math.cos(p.facing) * 6, Math.sin(p.facing) * 6, 3.2, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
