@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Shove</title>
+<title>Shove · Static Crown</title>
+<meta name="author" content="Static Crown">
 <style>
   :root {
     --bg: #0b0d12;
@@ -21,14 +22,18 @@
   .score b { font-size: 2rem; }
   .p1 { color: var(--p1); }
   .p2 { color: var(--p2); }
-  canvas { background: #07090d; border-radius: 8px; display: block; max-width: 100%; height: auto; touch-action: none; }
+  canvas {
+    background: #07090d; border-radius: 8px; display: block;
+    max-width: 100%; max-height: calc(100dvh - 8.5rem);
+    width: auto; height: auto; touch-action: none;
+  }
   .hud { width: min(720px, 100%); display: flex; justify-content: space-between; margin-top: .7rem; color: var(--muted); font-size: .85rem; }
   .msg {
     position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%);
     font-size: 1.8rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
     text-shadow: 0 2px 18px #000; pointer-events: none; text-align: center; width: 90%;
   }
-  .wrap { position: relative; }
+  .wrap { position: relative; max-width: 100%; }
   button {
     font: inherit; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
     padding: .7rem 1.2rem; border: 0; background: #f2f5ff; color: #111; cursor: pointer;
@@ -37,6 +42,8 @@
   #rematch { display: none; margin-top: .8rem; }
   #rematch.show { display: inline-block; }
   .lobby { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: min(360px, 100%); }
+  #lobbyStart { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: 100%; }
+  #lobby.waiting #lobbyStart { display: none; }
   .row { display: flex; gap: .5rem; width: 100%; }
   .row input {
     flex: 1; font: inherit; font-size: 1.4rem; letter-spacing: .2em; text-transform: uppercase;
@@ -48,18 +55,51 @@
   #game.on { display: flex; }
   #lobby.hid { display: none; }
   .pads {
-    display: flex; width: min(720px, 100%); justify-content: space-between; align-items: flex-end;
-    margin-top: .8rem; gap: 1rem; user-select: none;
+    display: none !important;
+    pointer-events: none; user-select: none; z-index: 5;
   }
-  .dpad { display: grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px; gap: 4px; }
-  .padbtn {
-    background: #1b2433; color: var(--ink); border: 1px solid #3a4b66; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700;
+  body.touch-ui .pads {
+    display: flex !important;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    justify-content: space-between; align-items: flex-end;
+    padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 0px));
   }
-  .padbtn.held { background: #3a4b66; }
-  .shove-btn { width: 96px; height: 96px; border-radius: 50%; background: #f2f5ff; color: #111; font-weight: 800; letter-spacing: .08em; border: 0; }
+  @media (hover: hover) and (pointer: fine) {
+    body:not(.touch-ui) .pads { display: none !important; }
+  }
+  body.touch-ui #hint { visibility: hidden; }
+  body.touch-ui #game.on { padding-bottom: 132px; }
+  .stick {
+    pointer-events: auto; touch-action: none;
+    width: 128px; height: 128px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .stick-base {
+    width: 112px; height: 112px; border-radius: 50%;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.2);
+    position: relative;
+  }
+  .stick-knob {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: rgba(242,245,255,.62);
+    position: absolute; left: 50%; top: 50%;
+    margin: -26px 0 0 -26px;
+    pointer-events: none;
+    will-change: transform;
+  }
+  .shove-btn {
+    pointer-events: auto; touch-action: none;
+    width: 92px; height: 92px; border-radius: 50%; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(242,245,255,.9); color: #111;
+    font-weight: 800; letter-spacing: .08em; border: 0;
+  }
   .shove-btn.held { background: #9ad; }
   .you { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: .3rem; }
+  .credit {
+    margin: 1.1rem 0 0; color: var(--muted); font-size: .75rem; letter-spacing: .04em;
+  }
 </style>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
@@ -67,10 +107,12 @@
   <h1>Shove</h1>
   <p class="sub">First to 3. Knock them off the stage.</p>
   <div id="lobby" class="lobby">
-    <button type="button" id="create">Create room</button>
-    <div class="row">
-      <input id="codein" maxlength="4" placeholder="CODE" autocomplete="off" autocorrect="off" spellcheck="false">
-      <button type="button" id="join">Join</button>
+    <div id="lobbyStart">
+      <button type="button" id="create">Create room</button>
+      <div class="row">
+        <input id="codein" maxlength="4" placeholder="CODE" autocomplete="off" autocorrect="off" spellcheck="false">
+        <button type="button" id="join">Join</button>
+      </div>
     </div>
     <div class="codebig" id="codebig" hidden></div>
     <p class="sub" id="wait" hidden>Waiting for player 2. Share this page or the code.</p>
@@ -88,21 +130,20 @@
       <div class="msg" id="msg"></div>
     </div>
     <div class="hud">
-      <span>WASD · Space shove</span>
+      <span id="hint">WASD · Space shove</span>
       <span id="roomhud"></span>
     </div>
-    <div class="pads">
-      <div class="dpad">
-        <b></b><button type="button" class="padbtn" data-dir="up">▲</button><b></b>
-        <button type="button" class="padbtn" data-dir="left">◀</button>
-        <button type="button" class="padbtn" data-dir="down">▼</button>
-        <button type="button" class="padbtn" data-dir="right">▶</button>
-        <b></b><b></b><b></b>
+    <button id="rematch" type="button">Rematch</button>
+    <div class="pads" id="pads" hidden aria-hidden="true">
+      <div class="stick" id="stick" aria-label="Move">
+        <div class="stick-base">
+          <div class="stick-knob" id="stickKnob"></div>
+        </div>
       </div>
       <button type="button" class="shove-btn" id="shoveBtn">SHOVE</button>
     </div>
-    <button id="rematch" type="button">Rematch</button>
   </div>
+  <p class="credit">Static Crown</p>
 <script>
 const W = 720, H = 480;
 const canvas = document.getElementById("c");
@@ -113,22 +154,94 @@ const SHOVE_CD = 0.4, SHOVE_RANGE = 46, SHOVE_SELF = 210, SHOVE_HIT = 560, SNAP_
 const ALPH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PEER_PREFIX = "bstrika-shove-";
 const keys = new Set();
-const pad = { up: false, down: false, left: false, right: false, shove: false };
+const pad = { shove: false };
+const stick = { x: 0, y: 0, pid: null };
+const PLAY_KEYS = ["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"];
+function preferTouchUI() {
+  try {
+    if (matchMedia("(pointer: coarse)").matches) return true;
+    if (matchMedia("(hover: none)").matches && (navigator.maxTouchPoints || 0) > 0) return true;
+  } catch (e) {}
+  return false;
+}
+function setTouchUI(on) {
+  const next = !!on;
+  document.body.classList.toggle("touch-ui", next);
+  const pads = document.getElementById("pads");
+  if (pads) {
+    pads.hidden = !next;
+    pads.setAttribute("aria-hidden", next ? "false" : "true");
+  }
+  if (!next) {
+    stick.x = 0; stick.y = 0; stick.pid = null;
+    pad.shove = false;
+    const knob = document.getElementById("stickKnob");
+    if (knob) knob.style.transform = "translate(0px, 0px)";
+    const shoveBtn = document.getElementById("shoveBtn");
+    if (shoveBtn) shoveBtn.classList.remove("held");
+  }
+}
+setTouchUI(preferTouchUI());
+try {
+  const coarse = matchMedia("(pointer: coarse)");
+  coarse.addEventListener("change", ev => { if (ev.matches) setTouchUI(true); });
+} catch (e) {}
+addEventListener("pointerdown", e => {
+  if (e.pointerType === "touch") setTouchUI(true);
+}, true);
 addEventListener("keydown", e => {
   keys.add(e.code);
   if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code)) e.preventDefault();
+  if (PLAY_KEYS.includes(e.code) && (!e.target || e.target.tagName !== "INPUT") && !preferTouchUI()) {
+    setTouchUI(false);
+  }
 });
 addEventListener("keyup", e => keys.delete(e.code));
-function bindPad(el, flag) {
-  const on = ev => { ev.preventDefault(); pad[flag] = true; el.classList.add("held"); };
-  const off = ev => { ev.preventDefault(); pad[flag] = false; el.classList.remove("held"); };
-  el.addEventListener("pointerdown", on);
-  el.addEventListener("pointerup", off);
-  el.addEventListener("pointercancel", off);
-  el.addEventListener("pointerleave", off);
-}
-document.querySelectorAll(".padbtn").forEach(el => bindPad(el, el.dataset.dir));
-bindPad(document.getElementById("shoveBtn"), "shove");
+(function bindTouchControls() {
+  const stickEl = document.getElementById("stick");
+  const knobEl = document.getElementById("stickKnob");
+  const shoveBtn = document.getElementById("shoveBtn");
+  function updateStick(ev) {
+    const base = stickEl.querySelector(".stick-base");
+    const r = base.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    let dx = ev.clientX - cx, dy = ev.clientY - cy;
+    const max = Math.max(r.width, r.height) * 0.42;
+    const len = Math.hypot(dx, dy);
+    if (len > max && len > 0) { dx = dx / len * max; dy = dy / len * max; }
+    stick.x = max ? dx / max : 0;
+    stick.y = max ? dy / max : 0;
+    knobEl.style.transform = "translate(" + dx + "px," + dy + "px)";
+  }
+  function endStick(ev) {
+    if (stick.pid !== ev.pointerId) return;
+    stick.pid = null; stick.x = 0; stick.y = 0;
+    knobEl.style.transform = "translate(0px, 0px)";
+  }
+  stickEl.addEventListener("pointerdown", ev => {
+    ev.preventDefault();
+    stick.pid = ev.pointerId;
+    try { stickEl.setPointerCapture(ev.pointerId); } catch (e) {}
+    updateStick(ev);
+  });
+  stickEl.addEventListener("pointermove", ev => {
+    if (stick.pid !== ev.pointerId) return;
+    ev.preventDefault();
+    updateStick(ev);
+  });
+  stickEl.addEventListener("pointerup", endStick);
+  stickEl.addEventListener("pointercancel", endStick);
+  shoveBtn.addEventListener("pointerdown", ev => {
+    ev.preventDefault();
+    pad.shove = true;
+    shoveBtn.classList.add("held");
+    try { shoveBtn.setPointerCapture(ev.pointerId); } catch (e) {}
+  });
+  const offShove = ev => { ev.preventDefault(); pad.shove = false; shoveBtn.classList.remove("held"); };
+  shoveBtn.addEventListener("pointerup", offShove);
+  shoveBtn.addEventListener("pointercancel", offShove);
+  shoveBtn.addEventListener("lostpointercapture", offShove);
+})();
 function norm(x, y) {
   const l = Math.hypot(x, y) || 0;
   return l ? { x: x / l, y: y / l } : { x: 0, y: 0 };
@@ -159,6 +272,7 @@ function wire(c) {
 }
 function showHostCode(c) {
   code = c;
+  document.getElementById("lobby").classList.add("waiting");
   document.getElementById("codebig").hidden = false;
   document.getElementById("codebig").textContent = code;
   document.getElementById("wait").hidden = false;
@@ -177,7 +291,10 @@ function hostRoom() {
   peer.on("connection", c => { c.on("open", () => { wire(c); enterGame(); }); });
   peer.on("error", err => {
     if (err.type === "unavailable-id") hostRoom();
-    else showErr(err.message || "Could not create a room.");
+    else {
+      document.getElementById("lobby").classList.remove("waiting");
+      showErr(err.message || "Could not create a room.");
+    }
   });
 }
 function joinRoom(raw) {
@@ -231,11 +348,16 @@ function startBreath(text) {
   document.getElementById("msg").textContent = banner;
 }
 function localDir() {
+  const mag = Math.hypot(stick.x, stick.y);
+  if (mag > 0.12) {
+    const s = Math.min(1, mag);
+    return { x: (stick.x / mag) * s, y: (stick.y / mag) * s };
+  }
   let x = 0, y = 0;
-  if (keys.has("KeyA") || keys.has("ArrowLeft") || pad.left) x -= 1;
-  if (keys.has("KeyD") || keys.has("ArrowRight") || pad.right) x += 1;
-  if (keys.has("KeyW") || keys.has("ArrowUp") || pad.up) y -= 1;
-  if (keys.has("KeyS") || keys.has("ArrowDown") || pad.down) y += 1;
+  if (keys.has("KeyA") || keys.has("ArrowLeft")) x -= 1;
+  if (keys.has("KeyD") || keys.has("ArrowRight")) x += 1;
+  if (keys.has("KeyW") || keys.has("ArrowUp")) y -= 1;
+  if (keys.has("KeyS") || keys.has("ArrowDown")) y += 1;
   return norm(x, y);
 }
 function localShove() { return keys.has("Space") || keys.has("Enter") || pad.shove; }
