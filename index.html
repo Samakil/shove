@@ -42,6 +42,8 @@
   #rematch { display: none; margin-top: .8rem; }
   #rematch.show { display: inline-block; }
   .lobby { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: min(360px, 100%); }
+  #lobbyStart { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: 100%; }
+  #lobby.waiting #lobbyStart { display: none; }
   .row { display: flex; gap: .5rem; width: 100%; }
   .row input {
     flex: 1; font: inherit; font-size: 1.4rem; letter-spacing: .2em; text-transform: uppercase;
@@ -53,14 +55,17 @@
   #game.on { display: flex; }
   #lobby.hid { display: none; }
   .pads {
-    display: none;
+    display: none !important;
     pointer-events: none; user-select: none; z-index: 5;
   }
   body.touch-ui .pads {
-    display: flex;
+    display: flex !important;
     position: fixed; left: 0; right: 0; bottom: 0;
     justify-content: space-between; align-items: flex-end;
     padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  @media (hover: hover) and (pointer: fine) {
+    body:not(.touch-ui) .pads { display: none !important; }
   }
   body.touch-ui #hint { visibility: hidden; }
   body.touch-ui #game.on { padding-bottom: 132px; }
@@ -102,10 +107,12 @@
   <h1>Shove</h1>
   <p class="sub">First to 3. Knock them off the stage.</p>
   <div id="lobby" class="lobby">
-    <button type="button" id="create">Create room</button>
-    <div class="row">
-      <input id="codein" maxlength="4" placeholder="CODE" autocomplete="off" autocorrect="off" spellcheck="false">
-      <button type="button" id="join">Join</button>
+    <div id="lobbyStart">
+      <button type="button" id="create">Create room</button>
+      <div class="row">
+        <input id="codein" maxlength="4" placeholder="CODE" autocomplete="off" autocorrect="off" spellcheck="false">
+        <button type="button" id="join">Join</button>
+      </div>
     </div>
     <div class="codebig" id="codebig" hidden></div>
     <p class="sub" id="wait" hidden>Waiting for player 2. Share this page or the code.</p>
@@ -121,20 +128,20 @@
     <div class="wrap">
       <canvas id="c" width="720" height="480"></canvas>
       <div class="msg" id="msg"></div>
-      <div class="pads" id="pads" aria-hidden="true">
-        <div class="stick" id="stick" aria-label="Move">
-          <div class="stick-base">
-            <div class="stick-knob" id="stickKnob"></div>
-          </div>
-        </div>
-        <button type="button" class="shove-btn" id="shoveBtn">SHOVE</button>
-      </div>
     </div>
     <div class="hud">
       <span id="hint">WASD · Space shove</span>
       <span id="roomhud"></span>
     </div>
     <button id="rematch" type="button">Rematch</button>
+    <div class="pads" id="pads" hidden aria-hidden="true">
+      <div class="stick" id="stick" aria-label="Move">
+        <div class="stick-base">
+          <div class="stick-knob" id="stickKnob"></div>
+        </div>
+      </div>
+      <button type="button" class="shove-btn" id="shoveBtn">SHOVE</button>
+    </div>
   </div>
   <p class="credit">Static Crown</p>
 <script>
@@ -161,7 +168,10 @@ function setTouchUI(on) {
   const next = !!on;
   document.body.classList.toggle("touch-ui", next);
   const pads = document.getElementById("pads");
-  if (pads) pads.setAttribute("aria-hidden", next ? "false" : "true");
+  if (pads) {
+    pads.hidden = !next;
+    pads.setAttribute("aria-hidden", next ? "false" : "true");
+  }
   if (!next) {
     stick.x = 0; stick.y = 0; stick.pid = null;
     pad.shove = false;
@@ -262,6 +272,7 @@ function wire(c) {
 }
 function showHostCode(c) {
   code = c;
+  document.getElementById("lobby").classList.add("waiting");
   document.getElementById("codebig").hidden = false;
   document.getElementById("codebig").textContent = code;
   document.getElementById("wait").hidden = false;
@@ -280,7 +291,10 @@ function hostRoom() {
   peer.on("connection", c => { c.on("open", () => { wire(c); enterGame(); }); });
   peer.on("error", err => {
     if (err.type === "unavailable-id") hostRoom();
-    else showErr(err.message || "Could not create a room.");
+    else {
+      document.getElementById("lobby").classList.remove("waiting");
+      showErr(err.message || "Could not create a room.");
+    }
   });
 }
 function joinRoom(raw) {
