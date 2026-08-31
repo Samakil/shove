@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Shove</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --ink: #e8eef8;
+    --muted: #8b97ad;
+    --p1: #3d9cff;
+    --p2: #ff5a3d;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; padding: 12px; }
+  h1 { font-size: 1.1rem; letter-spacing: .18em; text-transform: uppercase; margin: 0 0 .35rem; font-weight: 700; }
+  .sub { color: var(--muted); font-size: .8rem; margin: 0 0 .8rem; text-align: center; }
+  .score { display: flex; gap: 2.5rem; align-items: baseline; margin-bottom: .6rem; font-variant-numeric: tabular-nums; }
+  .score b { font-size: 2rem; }
+  .p1 { color: var(--p1); }
+  .p2 { color: var(--p2); }
+  canvas { background: #07090d; border-radius: 8px; display: block; max-width: 100%; height: auto; touch-action: none; }
+  .hud { width: min(720px, 100%); display: flex; justify-content: space-between; margin-top: .7rem; color: var(--muted); font-size: .85rem; }
+  .msg {
+    position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%);
+    font-size: 1.8rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+    text-shadow: 0 2px 18px #000; pointer-events: none; text-align: center; width: 90%;
+  }
+  .wrap { position: relative; }
+  button {
+    font: inherit; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    padding: .7rem 1.2rem; border: 0; background: #f2f5ff; color: #111; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid #3a4b66; }
+  #rematch { display: none; margin-top: .8rem; }
+  #rematch.show { display: inline-block; }
+  .lobby { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: min(360px, 100%); }
+  .row { display: flex; gap: .5rem; width: 100%; }
+  .row input {
+    flex: 1; font: inherit; font-size: 1.4rem; letter-spacing: .2em; text-transform: uppercase;
+    text-align: center; padding: .6rem; background: #121826; color: var(--ink); border: 1px solid #3a4b66;
+  }
+  .codebig { font-size: 3.2rem; letter-spacing: .28em; font-weight: 800; margin: .4rem 0; }
+  .err { color: #ff7a6a; min-height: 1.2em; font-size: .85rem; }
+  #game { display: none; flex-direction: column; align-items: center; }
+  #game.on { display: flex; }
+  #lobby.hid { display: none; }
+  .pads {
+    display: flex; width: min(720px, 100%); justify-content: space-between; align-items: flex-end;
+    margin-top: .8rem; gap: 1rem; user-select: none;
+  }
+  .dpad { display: grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px; gap: 4px; }
+  .padbtn {
+    background: #1b2433; color: var(--ink); border: 1px solid #3a4b66; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700;
+  }
+  .padbtn.held { background: #3a4b66; }
+  .shove-btn { width: 96px; height: 96px; border-radius: 50%; background: #f2f5ff; color: #111; font-weight: 800; letter-spacing: .08em; border: 0; }
+  .shove-btn.held { background: #9ad; }
+  .you { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: .3rem; }
+</style>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+  <h1>Shove</h1>
+  <p class="sub">First to 3. Knock them off the stage.</p>
+  <div id="lobby" class="lobby">
+    <button type="button" id="create">Create room</button>
+    <div class="row">
+      <input id="codein" maxlength="4" placeholder="CODE" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button type="button" id="join">Join</button>
+    </div>
+    <div class="codebig" id="codebig" hidden></div>
+    <p class="sub" id="wait" hidden>Waiting for player 2. Share this page or the code.</p>
+    <button type="button" class="ghost" id="copylink" hidden>Copy link</button>
+    <div class="err" id="err"></div>
+  </div>
+  <div id="game">
+    <div class="you" id="youlabel"></div>
+    <div class="score">
+      <div class="p1">P1 <b id="s1">0</b></div>
+      <div class="p2">P2 <b id="s2">0</b></div>
+    </div>
+    <div class="wrap">
+      <canvas id="c" width="720" height="480"></canvas>
+      <div class="msg" id="msg"></div>
+    </div>
+    <div class="hud">
+      <span>WASD · Space shove</span>
+      <span id="roomhud"></span>
+    </div>
+    <div class="pads">
+      <div class="dpad">
+        <b></b><button type="button" class="padbtn" data-dir="up">▲</button><b></b>
+        <button type="button" class="padbtn" data-dir="left">◀</button>
+        <button type="button" class="padbtn" data-dir="down">▼</button>
+        <button type="button" class="padbtn" data-dir="right">▶</button>
+        <b></b><b></b><b></b>
+      </div>
+      <button type="button" class="shove-btn" id="shoveBtn">SHOVE</button>
+    </div>
+    <button id="rematch" type="button">Rematch</button>
+  </div>
+<script>
+const W = 720, H = 480;
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const CX = W / 2, CY = H / 2 + 8;
+const STAGE_R = 168, PR = 18, SPEED = 240, FRICTION = 5.2;
+const SHOVE_CD = 0.4, SHOVE_RANGE = 46, SHOVE_SELF = 210, SHOVE_HIT = 560, SNAP_HZ = 20;
+const ALPH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const PEER_PREFIX = "bstrika-shove-";
+const keys = new Set();
+const pad = { up: false, down: false, left: false, right: false, shove: false };
+addEventListener("keydown", e => {
+  keys.add(e.code);
+  if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code)) e.preventDefault();
+});
+addEventListener("keyup", e => keys.delete(e.code));
+function bindPad(el, flag) {
+  const on = ev => { ev.preventDefault(); pad[flag] = true; el.classList.add("held"); };
+  const off = ev => { ev.preventDefault(); pad[flag] = false; el.classList.remove("held"); };
+  el.addEventListener("pointerdown", on);
+  el.addEventListener("pointerup", off);
+  el.addEventListener("pointercancel", off);
+  el.addEventListener("pointerleave", off);
+}
+document.querySelectorAll(".padbtn").forEach(el => bindPad(el, el.dataset.dir));
+bindPad(document.getElementById("shoveBtn"), "shove");
+function norm(x, y) {
+  const l = Math.hypot(x, y) || 0;
+  return l ? { x: x / l, y: y / l } : { x: 0, y: 0 };
+}
+function makeCode() {
+  let c = "";
+  for (let i = 0; i < 4; i++) c += ALPH[Math.floor(Math.random() * ALPH.length)];
+  return c;
+}
+function makePlayer(id, color, x) {
+  return { id, color, x, y: CY, vx: 0, vy: 0, cd: 0, shoving: 0, alive: true, facing: id === 1 ? 0 : Math.PI };
+}
+let slot = 0, code = "", peer = null, conn = null;
+let p1, p2, scores, mode, banner, bannerT, last, winner;
+let remoteIn = { x: 0, y: 0, shove: false };
+let snapAcc = 0;
+let hostSnap = null;
+function showErr(m) { document.getElementById("err").textContent = m || ""; }
+function send(obj) { if (conn && conn.open) conn.send(obj); }
+function wire(c) {
+  conn = c;
+  c.on("data", onMsg);
+  c.on("close", () => {
+    banner = "They left";
+    document.getElementById("msg").textContent = banner;
+    mode = "over";
+  });
+}
+function showHostCode(c) {
+  code = c;
+  document.getElementById("codebig").hidden = false;
+  document.getElementById("codebig").textContent = code;
+  document.getElementById("wait").hidden = false;
+  document.getElementById("copylink").hidden = false;
+  document.getElementById("roomhud").textContent = "Room " + code;
+  const u = new URL(location.href);
+  u.searchParams.set("room", code);
+  history.replaceState(null, "", u);
+}
+function hostRoom() {
+  showErr("");
+  const tryCode = makeCode();
+  if (peer) { try { peer.destroy(); } catch (e) {} }
+  peer = new Peer(PEER_PREFIX + tryCode);
+  peer.on("open", () => { slot = 1; showHostCode(tryCode); });
+  peer.on("connection", c => { c.on("open", () => { wire(c); enterGame(); }); });
+  peer.on("error", err => {
+    if (err.type === "unavailable-id") hostRoom();
+    else showErr(err.message || "Could not create a room.");
+  });
+}
+function joinRoom(raw) {
+  showErr("");
+  const c = String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 4);
+  if (c.length < 4) { showErr("Type a 4-letter code."); return; }
+  if (peer) { try { peer.destroy(); } catch (e) {} }
+  peer = new Peer();
+  peer.on("open", () => {
+    const cnx = peer.connect(PEER_PREFIX + c, { reliable: true });
+    const t = setTimeout(() => showErr("No room. Check the code."), 8000);
+    cnx.on("open", () => {
+      clearTimeout(t); slot = 2; code = c; wire(cnx); enterGame();
+    });
+    cnx.on("error", () => showErr("No room. Check the code."));
+  });
+  peer.on("error", err => showErr(err.message || "Could not join."));
+}
+function onMsg(msg) {
+  if (!msg || !msg.t) return;
+  if (msg.t === "in" && slot === 1) remoteIn = { x: msg.x || 0, y: msg.y || 0, shove: !!msg.shove };
+  else if (msg.t === "state" && slot === 2) applyState(msg);
+  else if (msg.t === "rematch" && slot === 1) resetMatch();
+}
+function enterGame() {
+  document.getElementById("lobby").classList.add("hid");
+  document.getElementById("game").classList.add("on");
+  document.getElementById("youlabel").textContent = slot === 1 ? "You are P1 · blue" : "You are P2 · red";
+  document.getElementById("youlabel").className = "you " + (slot === 1 ? "p1" : "p2");
+  document.getElementById("roomhud").textContent = "Room " + code;
+  if (slot === 1) resetMatch();
+}
+function resetMatch() {
+  scores = [0, 0]; winner = 0;
+  document.getElementById("s1").textContent = "0";
+  document.getElementById("s2").textContent = "0";
+  document.getElementById("rematch").classList.remove("show");
+  startRound("Shove");
+  if (slot === 1) send({ t: "state", ...packState() });
+}
+function startRound(text) {
+  p1 = makePlayer(1, "#3d9cff", CX - 70);
+  p2 = makePlayer(2, "#ff5a3d", CX + 70);
+  mode = "play"; banner = text || ""; bannerT = text ? 0.7 : 0;
+  document.getElementById("msg").textContent = banner;
+}
+function startBreath(text) {
+  p1 = makePlayer(1, "#3d9cff", CX - 70);
+  p2 = makePlayer(2, "#ff5a3d", CX + 70);
+  mode = "breath"; banner = text || ""; bannerT = 0.8;
+  document.getElementById("msg").textContent = banner;
+}
+function localDir() {
+  let x = 0, y = 0;
+  if (keys.has("KeyA") || keys.has("ArrowLeft") || pad.left) x -= 1;
+  if (keys.has("KeyD") || keys.has("ArrowRight") || pad.right) x += 1;
+  if (keys.has("KeyW") || keys.has("ArrowUp") || pad.up) y -= 1;
+  if (keys.has("KeyS") || keys.has("ArrowDown") || pad.down) y += 1;
+  return norm(x, y);
+}
+function localShove() { return keys.has("Space") || keys.has("Enter") || pad.shove; }
+function dirFor(p) {
+  if (mode !== "play") return { x: 0, y: 0 };
+  if (slot !== 1) return { x: 0, y: 0 };
+  if (p.id === 1) return localDir();
+  return norm(remoteIn.x, remoteIn.y);
+}
+function shoveHeld(p) {
+  if (mode !== "play") return false;
+  if (p.id === 1) return localShove();
+  return !!remoteIn.shove;
+}
+function tryShove(p, other) {
+  if (p.cd > 0 || !p.alive || mode !== "play") return;
+  if (!shoveHeld(p)) return;
+  p.cd = SHOVE_CD; p.shoving = 0.12;
+  let dir = dirFor(p);
+  if (!dir.x && !dir.y) dir = { x: Math.cos(p.facing), y: Math.sin(p.facing) };
+  p.vx += dir.x * SHOVE_SELF; p.vy += dir.y * SHOVE_SELF;
+  const dx = other.x - p.x, dy = other.y - p.y;
+  const d = Math.hypot(dx, dy);
+  if (other.alive && d < SHOVE_RANGE) {
+    const hit = d < 1 ? dir : { x: dx / d, y: dy / d };
+    other.vx += hit.x * SHOVE_HIT; other.vy += hit.y * SHOVE_HIT;
+  }
+}
+function stepPlayer(p, dt) {
+  if (!p.alive) return;
+  const dir = dirFor(p);
+  if (dir.x || dir.y) p.facing = Math.atan2(dir.y, dir.x);
+  p.vx += dir.x * SPEED * dt * 6; p.vy += dir.y * SPEED * dt * 6;
+  p.vx *= Math.max(0, 1 - FRICTION * dt); p.vy *= Math.max(0, 1 - FRICTION * dt);
+  const sp = Math.hypot(p.vx, p.vy);
+  if (sp > 420) { p.vx *= 420 / sp; p.vy *= 420 / sp; }
+  p.x += p.vx * dt; p.y += p.vy * dt;
+  p.cd = Math.max(0, p.cd - dt); p.shoving = Math.max(0, p.shoving - dt);
+  if (Math.hypot(p.x - CX, p.y - CY) > STAGE_R + PR * 0.15) p.alive = false;
+}
+function separate(a, b) {
+  if (!a.alive || !b.alive) return;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const d = Math.hypot(dx, dy) || 0.001;
+  const min = PR * 2;
+  if (d < min) {
+    const push = (min - d) / 2, nx = dx / d, ny = dy / d;
+    a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+  }
+}
+function roundOver(loser) {
+  if (mode !== "play") return;
+  mode = "pause";
+  const win = loser.id === 1 ? 2 : 1;
+  scores[win - 1] += 1;
+  document.getElementById("s" + win).textContent = String(scores[win - 1]);
+  if (scores[0] >= 3 || scores[1] >= 3) {
+    winner = scores[0] >= 3 ? 1 : 2;
+    banner = "P" + winner + " wins";
+    document.getElementById("msg").textContent = banner;
+    document.getElementById("rematch").classList.add("show");
+    mode = "over";
+  } else {
+    startBreath("P" + win);
+  }
+}
+function packState() {
+  const pack = p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, facing: p.facing, shoving: p.shoving, alive: p.alive });
+  return { p1: pack(p1), p2: pack(p2), s1: scores[0], s2: scores[1], mode, banner, bannerT, winner };
+}
+function applyState(s) {
+  hostSnap = s;
+  function stamp(p, d, color, id) {
+    if (!p) p = makePlayer(id, color, d.x);
+    p.x = d.x; p.y = d.y; p.vx = d.vx; p.vy = d.vy;
+    p.facing = d.facing; p.shoving = d.shoving; p.alive = d.alive; p.color = color;
+    return p;
+  }
+  if (!p1 || !p2) { p1 = stamp(p1, s.p1, "#3d9cff", 1); p2 = stamp(p2, s.p2, "#ff5a3d", 2); }
+  scores = [s.s1, s.s2];
+  mode = s.mode; banner = s.banner; bannerT = s.bannerT; winner = s.winner;
+  document.getElementById("s1").textContent = String(s.s1);
+  document.getElementById("s2").textContent = String(s.s2);
+  document.getElementById("msg").textContent = banner || "";
+  if (mode === "over") document.getElementById("rematch").classList.add("show");
+  else document.getElementById("rematch").classList.remove("show");
+}
+function lerpToward(p, d, k) {
+  if (!p || !d) return;
+  p.x += (d.x - p.x) * k; p.y += (d.y - p.y) * k;
+  p.vx += (d.vx - p.vx) * k; p.vy += (d.vy - p.vy) * k;
+  p.facing = d.facing; p.shoving = d.shoving; p.alive = d.alive;
+}
+function drawPlayer(p) {
+  if (!p) return;
+  ctx.save(); ctx.translate(p.x, p.y);
+  ctx.fillStyle = p.alive ? p.color : "#2a2f3a";
+  const r = p.alive ? (p.shoving > 0 ? PR + 3 : PR) : PR * 0.7;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#0b0d12";
+  ctx.beginPath(); ctx.arc(Math.cos(p.facing) * 6, Math.sin(p.facing) * 6, 3.2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = "#121826"; ctx.beginPath(); ctx.arc(CX, CY, STAGE_R + 14, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#1b2433"; ctx.beginPath(); ctx.arc(CX, CY, STAGE_R, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#3a4b66"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(CX, CY, STAGE_R, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.beginPath(); ctx.arc(CX, CY, STAGE_R * 0.45, 0, Math.PI * 2); ctx.stroke();
+  drawPlayer(p1); drawPlayer(p2);
+}
+function tick(t) {
+  const dt = Math.min(0.033, (t - last) / 1000);
+  last = t;
+  if (slot === 1 && p1) {
+    if (mode === "breath") {
+      bannerT -= dt;
+      if (bannerT <= 0) { mode = "play"; banner = ""; document.getElementById("msg").textContent = ""; }
+    }
+    if (mode === "play") {
+      tryShove(p1, p2); tryShove(p2, p1);
+      stepPlayer(p1, dt); stepPlayer(p2, dt); separate(p1, p2);
+      if (!p1.alive && !p2.alive) startBreath("Draw");
+      else if (!p1.alive) roundOver(p1);
+      else if (!p2.alive) roundOver(p2);
+    }
+    if (bannerT > 0 && mode === "play") {
+      bannerT -= dt;
+      if (bannerT <= 0) { banner = ""; document.getElementById("msg").textContent = ""; }
+    }
+    snapAcc += dt;
+    if (snapAcc >= 1 / SNAP_HZ) { snapAcc = 0; send({ t: "state", ...packState() }); }
+  } else if (slot === 2) {
+    const k = 1 - Math.exp(-18 * dt);
+    if (hostSnap && p1 && p2) { lerpToward(p1, hostSnap.p1, k); lerpToward(p2, hostSnap.p2, k); }
+    if (p2 && p2.alive && mode === "play") {
+      const dir = localDir();
+      if (dir.x || dir.y) p2.facing = Math.atan2(dir.y, dir.x);
+      p2.vx += dir.x * SPEED * dt * 6; p2.vy += dir.y * SPEED * dt * 6;
+      p2.vx *= Math.max(0, 1 - FRICTION * dt); p2.vy *= Math.max(0, 1 - FRICTION * dt);
+      const sp = Math.hypot(p2.vx, p2.vy);
+      if (sp > 420) { p2.vx *= 420 / sp; p2.vy *= 420 / sp; }
+      p2.x += p2.vx * dt; p2.y += p2.vy * dt;
+    }
+    snapAcc += dt;
+    if (snapAcc >= 1 / SNAP_HZ) {
+      snapAcc = 0;
+      const d = localDir();
+      send({ t: "in", x: d.x, y: d.y, shove: localShove() });
+    }
+  }
+  draw();
+  requestAnimationFrame(tick);
+}
+document.getElementById("create").onclick = hostRoom;
+document.getElementById("join").onclick = () => joinRoom(document.getElementById("codein").value);
+document.getElementById("copylink").onclick = () => {
+  const u = new URL(location.href);
+  u.searchParams.set("room", code);
+  navigator.clipboard.writeText(u.toString()).catch(() => {});
+};
+document.getElementById("rematch").onclick = () => {
+  if (slot === 1) resetMatch(); else send({ t: "rematch" });
+};
+last = performance.now();
+requestAnimationFrame(tick);
+const q = new URLSearchParams(location.search).get("room");
+if (q) { document.getElementById("codein").value = q.toUpperCase(); joinRoom(q); }
+</script>
+</body>
+</html>
