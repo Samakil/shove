@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Shove</title>
+<title>Shove · Static Crown</title>
+<meta name="author" content="Static Crown">
 <style>
   :root {
     --bg: #0b0d12;
@@ -21,14 +22,18 @@
   .score b { font-size: 2rem; }
   .p1 { color: var(--p1); }
   .p2 { color: var(--p2); }
-  canvas { background: #07090d; border-radius: 8px; display: block; max-width: 100%; height: auto; touch-action: none; }
+  canvas {
+    background: #07090d; border-radius: 8px; display: block;
+    max-width: 100%; max-height: calc(100dvh - 8.5rem);
+    width: auto; height: auto; touch-action: none;
+  }
   .hud { width: min(720px, 100%); display: flex; justify-content: space-between; margin-top: .7rem; color: var(--muted); font-size: .85rem; }
   .msg {
     position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%);
     font-size: 1.8rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
     text-shadow: 0 2px 18px #000; pointer-events: none; text-align: center; width: 90%;
   }
-  .wrap { position: relative; }
+  .wrap { position: relative; max-width: 100%; }
   button {
     font: inherit; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
     padding: .7rem 1.2rem; border: 0; background: #f2f5ff; color: #111; cursor: pointer;
@@ -49,13 +54,16 @@
   #lobby.hid { display: none; }
   .pads {
     display: none;
-    position: absolute; inset: 0;
-    justify-content: space-between; align-items: flex-end;
-    padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
-    pointer-events: none; user-select: none; z-index: 2;
+    pointer-events: none; user-select: none; z-index: 5;
   }
-  body.touch-ui .pads { display: flex; }
+  body.touch-ui .pads {
+    display: flex;
+    position: fixed; left: 0; right: 0; bottom: 0;
+    justify-content: space-between; align-items: flex-end;
+    padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
   body.touch-ui #hint { visibility: hidden; }
+  body.touch-ui #game.on { padding-bottom: 132px; }
   .stick {
     pointer-events: auto; touch-action: none;
     width: 128px; height: 128px;
@@ -84,6 +92,9 @@
   }
   .shove-btn.held { background: #9ad; }
   .you { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: .3rem; }
+  .credit {
+    margin: 1.1rem 0 0; color: var(--muted); font-size: .75rem; letter-spacing: .04em;
+  }
 </style>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
@@ -125,6 +136,7 @@
     </div>
     <button id="rematch" type="button">Rematch</button>
   </div>
+  <p class="credit">Static Crown</p>
 <script>
 const W = 720, H = 480;
 const canvas = document.getElementById("c");
@@ -199,7 +211,7 @@ addEventListener("keyup", e => keys.delete(e.code));
   stickEl.addEventListener("pointerdown", ev => {
     ev.preventDefault();
     stick.pid = ev.pointerId;
-    stickEl.setPointerCapture(ev.pointerId);
+    try { stickEl.setPointerCapture(ev.pointerId); } catch (e) {}
     updateStick(ev);
   });
   stickEl.addEventListener("pointermove", ev => {
