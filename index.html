@@ -302,16 +302,39 @@ function joinRoom(raw) {
   const c = String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 4);
   if (c.length < 4) { showErr("Type a 4-letter code."); return; }
   if (peer) { try { peer.destroy(); } catch (e) {} }
+  const ERR_NO_ROOM = "No room. Check the code.";
+  const ERR_NO_CONN = "Couldn't connect. Try again, or use the same Wi-Fi.";
+  let joined = false, missing = false, timer = 0;
+  function failJoin(msg) {
+    if (joined) return;
+    if (timer) { clearTimeout(timer); timer = 0; }
+    showErr(msg);
+  }
   peer = new Peer();
   peer.on("open", () => {
     const cnx = peer.connect(PEER_PREFIX + c, { reliable: true });
-    const t = setTimeout(() => showErr("No room. Check the code."), 8000);
+    timer = setTimeout(() => failJoin(missing ? ERR_NO_ROOM : ERR_NO_CONN), 8000);
     cnx.on("open", () => {
-      clearTimeout(t); slot = 2; code = c; wire(cnx); enterGame();
+      joined = true;
+      if (timer) { clearTimeout(timer); timer = 0; }
+      slot = 2; code = c; wire(cnx); enterGame();
     });
-    cnx.on("error", () => showErr("No room. Check the code."));
+    cnx.on("error", () => failJoin(missing ? ERR_NO_ROOM : ERR_NO_CONN));
+    cnx.on("iceStateChanged", state => {
+      if (state === "failed") failJoin(ERR_NO_CONN);
+    });
   });
-  peer.on("error", err => showErr(err.message || "Could not join."));
+  peer.on("error", err => {
+    if (joined) return;
+    if (err && err.type === "peer-unavailable") {
+      missing = true;
+      failJoin(ERR_NO_ROOM);
+    } else if (err && err.type === "webrtc") {
+      failJoin(ERR_NO_CONN);
+    } else {
+      showErr(err.message || "Could not join.");
+    }
+  });
 }
 function onMsg(msg) {
   if (!msg || !msg.t) return;
