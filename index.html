@@ -14,10 +14,19 @@
     --p2: #ff5a3d;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: ui-sans-serif, system-ui, sans-serif; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; padding: 12px; }
+  html, body {
+    margin: 0; height: 100%; max-width: 100%; overflow-x: hidden;
+    background: var(--bg); color: var(--ink); font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+  body {
+    display: flex; flex-direction: column; align-items: center; justify-content: safe center;
+    min-height: 100dvh; padding: 12px; width: 100%;
+  }
   h1 { font-size: 1.1rem; letter-spacing: .18em; text-transform: uppercase; margin: 0 0 .35rem; font-weight: 700; }
-  .sub { color: var(--muted); font-size: .8rem; margin: 0 0 .8rem; text-align: center; }
+  .sub { color: var(--muted); font-size: .8rem; margin: 0 0 .35rem; text-align: center; }
+  .credit {
+    margin: 0 0 .8rem; color: var(--muted); font-size: .75rem; letter-spacing: .04em;
+  }
   .score { display: flex; gap: 2.5rem; align-items: baseline; margin-bottom: .6rem; font-variant-numeric: tabular-nums; }
   .score b { font-size: 2rem; }
   .p1 { color: var(--p1); }
@@ -41,17 +50,19 @@
   button.ghost { background: transparent; color: var(--ink); border: 1px solid #3a4b66; }
   #rematch { display: none; margin-top: .8rem; }
   #rematch.show { display: inline-block; }
-  .lobby { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: min(360px, 100%); }
-  #lobbyStart { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: 100%; }
+  .lobby { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: min(360px, 100%); max-width: 100%; }
+  #lobbyStart { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: 100%; min-width: 0; }
   #lobby.waiting #lobbyStart { display: none; }
-  .row { display: flex; gap: .5rem; width: 100%; }
+  #create { width: 100%; max-width: 100%; }
+  .row { display: flex; gap: .5rem; width: 100%; min-width: 0; align-items: stretch; }
   .row input {
-    flex: 1; font: inherit; font-size: 1.4rem; letter-spacing: .2em; text-transform: uppercase;
+    flex: 1 1 0; min-width: 0; width: 0; font: inherit; font-size: 1.2rem; letter-spacing: .16em; text-transform: uppercase;
     text-align: center; padding: .6rem; background: #121826; color: var(--ink); border: 1px solid #3a4b66;
   }
-  .codebig { font-size: 3.2rem; letter-spacing: .28em; font-weight: 800; margin: .4rem 0; }
+  #join { flex: 0 0 auto; padding: .65rem .9rem; }
+  .codebig { font-size: 3.2rem; letter-spacing: .28em; font-weight: 800; margin: .4rem 0; max-width: 100%; }
   .err { color: #ff7a6a; min-height: 1.2em; font-size: .85rem; }
-  #game { display: none; flex-direction: column; align-items: center; }
+  #game { display: none; flex-direction: column; align-items: center; max-width: 100%; }
   #game.on { display: flex; }
   #lobby.hid { display: none; }
   .pads {
@@ -68,7 +79,28 @@
     body:not(.touch-ui) .pads { display: none !important; }
   }
   body.touch-ui #hint { visibility: hidden; }
-  body.touch-ui #game.on { padding-bottom: 132px; }
+  body.touch-ui #game.on { padding-bottom: 0; }
+  @media (orientation: portrait) {
+    body.touch-ui #game.on { padding-bottom: 7.5rem; }
+  }
+  @media (max-width: 400px) {
+    .row { flex-wrap: wrap; }
+    .row input { width: auto; flex: 1 1 9rem; }
+  }
+  @media (orientation: landscape) and (max-height: 500px) {
+    html, body { overflow: hidden; height: 100%; }
+    body { padding: 6px 10px; justify-content: flex-start; }
+    h1 { font-size: .9rem; margin: 0 0 .12rem; }
+    .sub { font-size: .7rem; margin: 0 0 .15rem; }
+    .credit { margin: 0 0 .2rem; font-size: .65rem; }
+    .you { font-size: .7rem; margin-bottom: .1rem; }
+    .score { margin-bottom: .15rem; gap: 1.5rem; }
+    .score b { font-size: 1.25rem; }
+    canvas { max-height: calc(100dvh - 5.4rem); }
+    .hud { margin-top: .2rem; font-size: .75rem; }
+    #rematch { margin-top: .3rem; }
+    body.touch-ui #game.on { padding-bottom: 0; }
+  }
   .stick {
     pointer-events: auto; touch-action: none;
     width: 128px; height: 128px;
@@ -97,8 +129,10 @@
   }
   .shove-btn.held { background: #9ad; }
   .you { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; margin-bottom: .3rem; }
-  .credit {
-    margin: 1.1rem 0 0; color: var(--muted); font-size: .75rem; letter-spacing: .04em;
+  @media (orientation: landscape) and (max-height: 500px) {
+    .stick { width: 104px; height: 104px; }
+    .stick-base { width: 92px; height: 92px; }
+    .shove-btn { width: 80px; height: 80px; }
   }
 </style>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -106,6 +140,7 @@
 <body>
   <h1>Shove</h1>
   <p class="sub">First to 3. Knock them off the stage.</p>
+  <p class="credit">Static Crown</p>
   <div id="lobby" class="lobby">
     <div id="lobbyStart">
       <button type="button" id="create">Create room</button>
@@ -143,7 +178,6 @@
       <button type="button" class="shove-btn" id="shoveBtn">SHOVE</button>
     </div>
   </div>
-  <p class="credit">Static Crown</p>
 <script>
 const W = 720, H = 480;
 const canvas = document.getElementById("c");
