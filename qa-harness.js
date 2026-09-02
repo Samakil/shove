@@ -3,7 +3,10 @@ const vm = require('vm');
 const assert = require('assert');
 
 const html = fs.readFileSync('index.html', 'utf8');
-const script = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(m => m[1]).filter(Boolean)[0];
+const script = fs.readFileSync('game.js', 'utf8');
+assert.match(html, /<link rel="stylesheet" href="styles\.css">/, 'page should load the extracted stylesheet');
+assert.match(html, /<script src="game\.js"><\/script>/, 'page should load the extracted game logic');
+assert.ok(fs.readFileSync('styles.css', 'utf8').includes('.lobby'), 'stylesheet should contain the game layout');
 
 function classList() {
   const values = new Set();
