@@ -752,8 +752,59 @@ function joinRoom(raw) {
   });
 }
 function cleanAxis(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.max(-1, Math.min(1, n)) : 0;
+  return cleanNumber(value, -1, 1, 0);
+}
+function cleanNumber(value, min, max, fallback) {
+  try {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+function cleanPlayerState(d) {
+  if (!d || typeof d !== "object") return null;
+  const x = cleanNumber(d.x, -1000, W + 1000, null);
+  const y = cleanNumber(d.y, -1000, H + 1000, null);
+  const vx = cleanNumber(d.vx, -1000, 1000, null);
+  const vy = cleanNumber(d.vy, -1000, 1000, null);
+  const facing = cleanNumber(d.facing, -Math.PI * 4, Math.PI * 4, null);
+  if (x == null || y == null || vx == null || vy == null || facing == null) return null;
+  return {
+    x, y, vx, vy, facing,
+    shoving: cleanNumber(d.shoving, 0, 2, 0),
+    hit: cleanNumber(d.hit, 0, 2, 0),
+    cd: cleanNumber(d.cd, 0, 5, 0),
+    alive: !!d.alive
+  };
+}
+function cleanStatePacket(s) {
+  if (!s || typeof s !== "object") return null;
+  const a = cleanPlayerState(s.p1), b = cleanPlayerState(s.p2);
+  const allowedModes = ["breath", "play", "pause", "over"];
+  if (!a || !b || !allowedModes.includes(s.mode)) return null;
+  const cleanImpact = i => {
+    if (!i || typeof i !== "object") return null;
+    const x = cleanNumber(i.x, -1000, W + 1000, null);
+    const y = cleanNumber(i.y, -1000, H + 1000, null);
+    if (x == null || y == null) return null;
+    return { x, y, nx: cleanNumber(i.nx, -1, 1, 0), ny: cleanNumber(i.ny, -1, 1, 0), t: cleanNumber(i.t, 0, 1, 0) };
+  };
+  return {
+    p1: a, p2: b,
+    s1: Math.round(cleanNumber(s.s1, 0, 3, 0)),
+    s2: Math.round(cleanNumber(s.s2, 0, 3, 0)),
+    mode: s.mode,
+    banner: typeof s.banner === "string" ? s.banner.slice(0, 80) : "",
+    bannerT: cleanNumber(s.bannerT, 0, 10, 0),
+    winner: Math.round(cleanNumber(s.winner, 0, 2, 0)),
+    camKick: cleanNumber(s.camKick, 0, 1, 0),
+    camAng: cleanNumber(s.camAng, -Math.PI * 4, Math.PI * 4, 0),
+    impacts: (Array.isArray(s.impacts) ? s.impacts : []).slice(0, 24).map(cleanImpact).filter(Boolean),
+    want1: !!s.want1, want2: !!s.want2,
+    hitstop: cleanNumber(s.hitstop, 0, 0.5, 0),
+    declinedBy: Math.round(cleanNumber(s.declinedBy, 0, 2, 0))
+  };
 }
 function onMsg(msg) {
   if (!msg || !msg.t) return;
@@ -767,7 +818,10 @@ function onMsg(msg) {
     failGuestJoin(msg.reason === "full" ? "Room is already in a match." : "The room rejected the connection.");
   }
   else if (msg.t === "in" && slot === 1) remoteIn = { x: cleanAxis(msg.x), y: cleanAxis(msg.y), shove: !!msg.shove };
-  else if (msg.t === "state" && slot === 2) applyState(msg);
+  else if (msg.t === "state" && slot === 2) {
+    const safeState = cleanStatePacket(msg);
+    if (safeState) applyState(safeState);
+  }
   else if (msg.t === "rematch" && slot === 1) wantRematch(2);
   else if (msg.t === "decline" && slot === 1) hostGotDecline(2);
 }

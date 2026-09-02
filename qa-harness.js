@@ -157,6 +157,24 @@ runTimersThrough(1000);
 assert.equal(vm.runInContext('peer', context), currentPeer, 'stale peer error must not replace the current peer');
 assert.equal(currentPeer.destroyed, false, 'stale peer error must not destroy the current room');
 
+vm.runInContext('slot = 2; p1 = null; p2 = null; hostSnap = null', context);
+assert.doesNotThrow(() => vm.runInContext('onMsg({t:"state"})', context), 'malformed initial state must not crash the guest');
+assert.equal(vm.runInContext('hostSnap', context), null, 'malformed state should be ignored');
+context.extremeState = {
+  t:'state',
+  p1:{x:1e300,y:-1e300,vx:1e300,vy:-1e300,facing:1e300,shoving:99,hit:99,cd:99,alive:true},
+  p2:{x:360,y:248,vx:0,vy:0,facing:0,shoving:0,hit:0,cd:0,alive:true},
+  s1:99,s2:-99,mode:'play',banner:'x'.repeat(500),bannerT:99,winner:99,camKick:99,camAng:1e300,
+  impacts:Array.from({length:100},()=>({x:1e300,y:-1e300,nx:99,ny:-99,t:99})),want1:true,want2:false,hitstop:99,declinedBy:99
+};
+vm.runInContext('onMsg(extremeState)', context);
+const safeState = vm.runInContext('hostSnap', context);
+assert.ok(safeState && Number.isFinite(safeState.p1.x), 'extreme state should be sanitized');
+assert.equal(safeState.s1, 3, 'score should be clamped to the winning limit');
+assert.equal(safeState.s2, 0, 'negative score should be clamped');
+assert.equal(safeState.impacts.length, 24, 'impact payload should be bounded');
+assert.equal(safeState.banner.length, 80, 'banner payload should be bounded');
+
 vm.runInContext('Peer = undefined; peer = null; hostRoom("WXYZ")', context);
 assert.match(els.err.textContent, /failed to load/i, 'missing PeerJS should show a useful error');
 
