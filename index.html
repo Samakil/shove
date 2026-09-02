@@ -68,10 +68,18 @@
     text-transform: uppercase; text-shadow: 0 2px 14px #000;
   }
   .endbtns { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
-  #rematch.tapped, #rematch:disabled {
-    opacity: .42; background: #9aa3b3; color: #222; cursor: default; pointer-events: none;
+  #waitstatus { display: none; }
+  #replybtns { display: none; }
+  #endplay.waiting #waitstatus { display: block; }
+  #endplay.waiting #again { display: none; }
+  #endplay.reply #replybtns { display: flex; }
+  #endplay.reply #offerbtns { display: none; }
+  #rematch.tapped {
+    background: #d4d8e4; color: #111; box-shadow: inset 0 2px 0 rgba(0,0,0,.22);
+    pointer-events: none; opacity: 1;
   }
-  #endplay.left .again, #endplay.left #rematch { display: none; }
+  #endplay.left .again, #endplay.left #rematch, #endplay.left #waitstatus, #endplay.left #replybtns { display: none; }
+  #endplay.declined .again, #endplay.declined #rematch, #endplay.declined #waitstatus, #endplay.declined #replybtns { display: none; }
   .lobby { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: min(360px, 100%); max-width: 100%; }
   #lobbyStart { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: 100%; min-width: 0; }
   #lobby.waiting #lobbyStart { display: none; }
@@ -187,9 +195,14 @@
     </div>
     <div id="endplay">
       <p class="again" id="again">Again?</p>
-      <div class="endbtns">
+      <p class="again" id="waitstatus">Waiting</p>
+      <div class="endbtns" id="offerbtns">
         <button id="rematch" type="button">Rematch</button>
         <button id="newfight" type="button" class="ghost">New fight</button>
+      </div>
+      <div class="endbtns" id="replybtns">
+        <button id="accept" type="button">Accept</button>
+        <button id="decline" type="button" class="ghost">Decline</button>
       </div>
     </div>
     <div class="pads" id="pads" hidden aria-hidden="true">
@@ -375,21 +388,50 @@ function punchScore(id) {
 }
 let rematchYes = [false, false];
 let iSaidYes = false;
+let declinedBy = 0;
 function markRematchTapped(on) {
   const btn = document.getElementById("rematch");
   btn.disabled = !!on;
   btn.classList.toggle("tapped", !!on);
 }
+function meYes() {
+  return iSaidYes || (slot === 1 ? rematchYes[0] : rematchYes[1]);
+}
+function theyYes() {
+  return slot === 1 ? rematchYes[1] : rematchYes[0];
+}
+function syncEndChrome() {
+  const el = document.getElementById("endplay");
+  el.classList.remove("waiting", "offer", "reply");
+  if (!el.classList.contains("show") || el.classList.contains("left") || el.classList.contains("declined")) {
+    markRematchTapped(el.classList.contains("waiting"));
+    return;
+  }
+  const me = meYes(), they = theyYes();
+  if (me && !they) {
+    el.classList.add("waiting");
+    markRematchTapped(true);
+  } else if (they && !me) {
+    el.classList.add("reply");
+    markRematchTapped(false);
+  } else {
+    el.classList.add("offer");
+    markRematchTapped(false);
+  }
+}
 function showEndplay(on) {
   const el = document.getElementById("endplay");
   el.classList.toggle("show", !!on);
-  el.classList.remove("left");
+  el.classList.remove("left", "declined", "waiting", "offer", "reply");
   document.getElementById("rematch").hidden = false;
   document.getElementById("again").hidden = false;
   if (!on) {
     rematchYes = [false, false];
     iSaidYes = false;
+    declinedBy = 0;
     markRematchTapped(false);
+  } else {
+    syncEndChrome();
   }
 }
 function showTheyLeft() {
@@ -399,6 +441,17 @@ function showTheyLeft() {
   iSaidYes = false;
   const el = document.getElementById("endplay");
   el.classList.add("show", "left");
+  el.classList.remove("declined", "waiting", "offer", "reply");
+  document.getElementById("rematch").hidden = true;
+  document.getElementById("again").hidden = true;
+  markRematchTapped(false);
+}
+function showDeclined() {
+  setBanner("That's 3");
+  mode = "over";
+  const el = document.getElementById("endplay");
+  el.classList.add("show", "declined");
+  el.classList.remove("left", "waiting", "offer", "reply");
   document.getElementById("rematch").hidden = true;
   document.getElementById("again").hidden = true;
   markRematchTapped(false);
@@ -581,16 +634,38 @@ function onMsg(msg) {
   if (msg.t === "in" && slot === 1) remoteIn = { x: msg.x || 0, y: msg.y || 0, shove: !!msg.shove };
   else if (msg.t === "state" && slot === 2) applyState(msg);
   else if (msg.t === "rematch" && slot === 1) wantRematch(2);
+  else if (msg.t === "decline" && slot === 1) hostGotDecline(2);
+}
+function hostGotDecline(who) {
+  if (mode !== "over" || declinedBy) return;
+  declinedBy = who;
+  if (who !== 1) showTheyLeft();
+  else showDeclined();
+  send({ t: "state", ...packState() });
 }
 function wantRematch(who) {
-  if (mode !== "over" || banner !== "That's 3") return;
+  if (mode !== "over" || declinedBy) return;
   rematchYes[who - 1] = true;
-  if (slot === who) {
-    iSaidYes = true;
-    markRematchTapped(true);
-  }
+  if (slot === who) iSaidYes = true;
   if (rematchYes[0] && rematchYes[1]) resetMatch();
-  else if (slot === 1) send({ t: "state", ...packState() });
+  else {
+    syncEndChrome();
+    if (slot === 1) send({ t: "state", ...packState() });
+  }
+}
+function declineRematch() {
+  if (mode !== "over" || declinedBy) return;
+  if (meYes()) return;
+  if (!theyYes()) return;
+  if (slot === 1) {
+    declinedBy = 1;
+    showDeclined();
+    send({ t: "state", ...packState() });
+  } else {
+    declinedBy = 2;
+    showDeclined();
+    send({ t: "decline" });
+  }
 }
 function enterGame() {
   clearHostPersist();
@@ -701,6 +776,7 @@ function roundOver(loser) {
     winner = scores[0] >= 3 ? 1 : 2;
     rematchYes = [false, false];
     iSaidYes = false;
+    declinedBy = 0;
     setBanner("That's 3");
     showEndplay(true);
     markRematchTapped(false);
@@ -712,7 +788,7 @@ function roundOver(loser) {
 }
 function packState() {
   const pack = p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, facing: p.facing, shoving: p.shoving, hit: p.hit, cd: p.cd, alive: p.alive });
-  return { p1: pack(p1), p2: pack(p2), s1: scores[0], s2: scores[1], mode, banner, bannerT, winner, camKick, camAng, impacts, want1: rematchYes[0], want2: rematchYes[1], hitstop };
+  return { p1: pack(p1), p2: pack(p2), s1: scores[0], s2: scores[1], mode, banner, bannerT, winner, camKick, camAng, impacts, want1: rematchYes[0], want2: rematchYes[1], hitstop, declinedBy };
 }
 function applyState(s) {
   hostSnap = s;
@@ -739,10 +815,15 @@ function applyState(s) {
   document.getElementById("msg").textContent = banner || "";
   if (s.want1 != null) rematchYes[0] = !!s.want1;
   if (s.want2 != null) rematchYes[1] = !!s.want2;
-  if (mode === "over" && banner === "They left") showTheyLeft();
+  if (s.declinedBy != null) declinedBy = s.declinedBy || 0;
+  if (declinedBy === slot) showDeclined();
+  else if (declinedBy && declinedBy !== slot) showTheyLeft();
+  else if (mode === "over" && banner === "They left") showTheyLeft();
   else if (mode === "over" && banner === "That's 3") {
-    showEndplay(true);
-    markRematchTapped(iSaidYes || (slot === 1 ? rematchYes[0] : rematchYes[1]));
+    const el = document.getElementById("endplay");
+    el.classList.add("show");
+    el.classList.remove("left", "declined");
+    syncEndChrome();
   } else {
     showEndplay(false);
   }
@@ -1033,13 +1114,21 @@ document.getElementById("copylink").onclick = () => {
   navigator.clipboard.writeText(url).catch(() => {});
 };
 document.getElementById("rematch").onclick = () => {
-  if (mode !== "over" || banner !== "That's 3") return;
+  if (mode !== "over" || declinedBy) return;
   if (iSaidYes || document.getElementById("rematch").disabled) return;
   iSaidYes = true;
-  markRematchTapped(true);
+  if (slot === 1) wantRematch(1);
+  else send({ t: "rematch" });
+  syncEndChrome();
+};
+document.getElementById("accept").onclick = () => {
+  if (mode !== "over" || declinedBy) return;
+  if (iSaidYes) return;
+  iSaidYes = true;
   if (slot === 1) wantRematch(1);
   else send({ t: "rematch" });
 };
+document.getElementById("decline").onclick = declineRematch;
 document.getElementById("newfight").onclick = newFight;
 addEventListener("pageshow", e => { if (e.persisted) bootNet(); });
 addEventListener("visibilitychange", () => {
