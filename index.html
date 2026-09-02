@@ -181,7 +181,7 @@
     <div id="lobbyStart">
       <button type="button" id="create">Create room</button>
       <div class="row">
-        <input id="codein" maxlength="4" placeholder="CODE" autocomplete="off" autocorrect="off" spellcheck="false">
+        <input id="codein" maxlength="4" placeholder="CODE" aria-label="Room code" autocomplete="off" autocorrect="off" spellcheck="false">
         <button type="button" id="join">Join</button>
       </div>
     </div>
@@ -340,6 +340,7 @@ function makePlayer(id, color, x) {
 }
 const HOST_KEY = "shove-host";
 let slot = 0, code = "", peer = null, conn = null;
+let incomingPending = false;
 let p1, p2, scores, mode, banner, bannerT, last, winner;
 let remoteIn = { x: 0, y: 0, shove: false };
 let snapAcc = 0;
@@ -493,6 +494,18 @@ function updateShoveBtn() {
 }
 function showErr(m) { document.getElementById("err").textContent = m || ""; }
 function send(obj) { if (conn && conn.open) conn.send(obj); }
+function makePeer(id) {
+  if (typeof Peer !== "function") {
+    showErr("Online service failed to load. Refresh and try again.");
+    return null;
+  }
+  try {
+    return id ? new Peer(id) : new Peer();
+  } catch (e) {
+    showErr("Online service failed to start. Refresh and try again.");
+    return null;
+  }
+}
 function wire(c) {
   conn = c;
   c.on("data", onMsg);
@@ -558,7 +571,28 @@ function ensureHostBroker() {
 }
 function bindHostPeer(tryCode, existingCode, n) {
   peer.on("open", () => { hostOpening = false; slot = 1; showHostCode(tryCode); });
-  peer.on("connection", c => { c.on("open", () => { wire(c); enterGame(); }); });
+  peer.on("connection", c => {
+    const gameActive = document.getElementById("game").classList.contains("on");
+    if (incomingPending || gameActive || (conn && conn.open)) {
+      c.on("open", () => { try { c.close(); } catch (e) {} });
+      return;
+    }
+    incomingPending = true;
+    c.on("open", () => {
+      const nowBusy = document.getElementById("game").classList.contains("on") || (conn && conn.open);
+      if (nowBusy) {
+        incomingPending = false;
+        try { c.close(); } catch (e) {}
+        return;
+      }
+      incomingPending = false;
+      wire(c);
+      enterGame();
+    });
+    c.on("close", () => {
+      if (conn !== c) incomingPending = false;
+    });
+  });
   peer.on("disconnected", () => {
     if (!hostIsWaiting()) return;
     showErr("");
@@ -601,26 +635,29 @@ function hostRoom(existingCode, attempt) {
     showHostCode(tryCode);
   }
   hostOpening = true;
+  incomingPending = false;
   if (peer) { try { peer.destroy(); } catch (e) {} }
   hostOpening = true;
-  peer = new Peer(PEER_PREFIX + tryCode);
+  peer = makePeer(PEER_PREFIX + tryCode);
+  if (!peer) { hostOpening = false; return; }
   bindHostPeer(tryCode, existingCode, n);
 }
 function joinRoom(raw) {
   showErr("");
   const c = normalizeCode(raw);
-  if (c.length < 4) { showErr("Type a 4-letter code."); return; }
+  if (c.length < 4) { showErr("Type a 4-character code."); return; }
   clearHostPersist();
   if (peer) { try { peer.destroy(); } catch (e) {} }
   const ERR_NO_ROOM = "No room. Check the code.";
-  const ERR_NO_CONN = "Couldn't connect. Try again, or use the same Wi-Fi.";
+  const ERR_NO_CONN = "Couldn't connect. The network may block peer-to-peer play.";
   let joined = false, missing = false, timer = 0;
   function failJoin(msg) {
     if (joined) return;
     if (timer) { clearTimeout(timer); timer = 0; }
     showErr(msg);
   }
-  peer = new Peer();
+  peer = makePeer();
+  if (!peer) return;
   peer.on("open", () => {
     const cnx = peer.connect(PEER_PREFIX + c, { reliable: true });
     timer = setTimeout(() => failJoin(missing ? ERR_NO_ROOM : ERR_NO_CONN), 8000);
@@ -685,7 +722,7 @@ function declineRematch() {
   }
 }
 function enterGame() {
-  clearHostPersist();
+  if (slot === 2) clearHostPersist();
   document.getElementById("lobby").classList.add("hid");
   document.getElementById("game").classList.add("on");
   document.getElementById("roomhud").textContent = "Room " + code;
@@ -1094,7 +1131,7 @@ function newFight() {
   setBanner("");
   try { if (oldConn) oldConn.close(); } catch (e) {}
   try { if (oldPeer) oldPeer.destroy(); } catch (e) {}
-  slot = 0; p1 = p2 = null; mode = "";
+  slot = 0; p1 = p2 = null; mode = ""; incomingPending = false;
   clearHostPersist();
   document.getElementById("game").classList.remove("on");
   document.getElementById("lobby").classList.remove("hid", "waiting");
@@ -1128,13 +1165,18 @@ document.getElementById("join").onclick = () => joinRoom(document.getElementById
 document.getElementById("copylink").onclick = () => {
   if (!code) return;
   const url = roomLink().toString();
+  const btn = document.getElementById("copylink");
+  const confirmCopy = text => {
+    btn.textContent = text;
+    setTimeout(() => { btn.textContent = "Copy link"; }, 1400);
+  };
   if (navigator.share) {
-    navigator.share({ title: "Shove", text: "Join " + code, url }).catch(() => {
-      navigator.clipboard.writeText(url).catch(() => {});
-    });
+    navigator.share({ title: "Shove", text: "Join " + code, url })
+      .then(() => confirmCopy("Shared"))
+      .catch(() => navigator.clipboard.writeText(url).then(() => confirmCopy("Copied")).catch(() => showErr("Could not copy the link.")));
     return;
   }
-  navigator.clipboard.writeText(url).catch(() => {});
+  navigator.clipboard.writeText(url).then(() => confirmCopy("Copied")).catch(() => showErr("Could not copy the link."));
 };
 document.getElementById("rematch").onclick = () => {
   if (mode !== "over" || declinedBy) return;
