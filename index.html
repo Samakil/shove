@@ -14,13 +14,16 @@
     --p2: #ff5a3d;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body {
-    margin: 0; height: 100%; max-width: 100%; overflow-x: hidden;
+  html {
+    margin: 0; height: auto; min-height: 100%; max-width: 100%;
+    overflow-x: hidden; overflow-y: auto;
     background: var(--bg); color: var(--ink); font-family: ui-sans-serif, system-ui, sans-serif;
   }
   body {
-    display: flex; flex-direction: column; align-items: center; justify-content: safe center;
-    min-height: 100dvh; padding: 12px; width: 100%;
+    margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center;
+    min-height: 100dvh; height: auto; padding: 12px; width: 100%; max-width: 100%;
+    overflow-x: hidden;
+    background: var(--bg); color: var(--ink); font-family: inherit;
   }
   h1 { font-size: 1.1rem; letter-spacing: .18em; text-transform: uppercase; margin: 0 0 .35rem; font-weight: 700; }
   .sub { color: var(--muted); font-size: .8rem; margin: 0 0 .35rem; text-align: center; }
@@ -49,6 +52,8 @@
     max-width: 100%; max-height: calc(100dvh - 8.5rem);
     width: auto; height: auto; touch-action: none;
   }
+  #game:has(#endplay.show) canvas { max-height: calc(100dvh - 14.25rem); }
+  #game:has(#endplay.show) .hud { margin-top: .4rem; }
   .hud { width: min(720px, 100%); display: flex; justify-content: space-between; margin-top: .7rem; color: var(--muted); font-size: .85rem; }
   .msg {
     position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%);
@@ -62,7 +67,7 @@
   }
   button.ghost { background: transparent; color: var(--ink); border: 1px solid #3a4b66; }
   #endplay { display: none; flex-direction: column; align-items: center; margin-top: .8rem; gap: .4rem; }
-  #endplay.show { display: flex; }
+  #endplay.show { display: flex; flex-shrink: 0; margin-top: .35rem; gap: .3rem; }
   .again {
     margin: 0; font-size: 1.05rem; font-weight: 800; letter-spacing: .06em;
     text-transform: uppercase; text-shadow: 0 2px 14px #000;
@@ -74,6 +79,9 @@
   #endplay.waiting #again { display: none; }
   #endplay.reply #replybtns { display: flex; }
   #endplay.reply #offerbtns { display: none; }
+  #endplay.committed #offerbtns, #endplay.committed #replybtns { display: none; }
+  #endplay.committed #waitstatus { display: block; }
+  #endplay.committed #again { display: none; }
   #rematch.tapped {
     background: #d4d8e4; color: #111; box-shadow: inset 0 2px 0 rgba(0,0,0,.22);
     pointer-events: none; opacity: 1;
@@ -93,7 +101,7 @@
   .codebig { font-size: 3.2rem; letter-spacing: .28em; font-weight: 800; margin: .4rem 0; max-width: 100%; }
   .err { color: #ff7a6a; min-height: 1.2em; font-size: .85rem; }
   #game { display: none; flex-direction: column; align-items: center; max-width: 100%; }
-  #game.on { display: flex; }
+  #game.on { display: flex; flex-shrink: 0; }
   #lobby.hid { display: none; }
   .pads {
     display: none !important;
@@ -114,8 +122,8 @@
     body.touch-ui #game.on { padding-bottom: 7.5rem; }
   }
   @media (orientation: landscape) and (max-height: 500px) {
-    html, body { overflow: hidden; height: 100%; max-height: 100%; }
-    body { padding: 4px 10px; justify-content: flex-start; min-height: 0; }
+    html, body { overflow-x: hidden; overflow-y: auto; height: auto; max-height: none; }
+    body { padding: 4px 10px; justify-content: flex-start; min-height: 100dvh; }
     h1 { font-size: .85rem; margin: 0 0 .08rem; }
     .sub { font-size: .65rem; margin: 0 0 .08rem; }
     .pitch { font-size: .72rem; margin: 0 0 .35rem; }
@@ -123,8 +131,11 @@
     .score { margin-bottom: .08rem; gap: 1.4rem; }
     .score b { font-size: 1.15rem; }
     canvas { max-height: calc(100dvh - 6.6rem); }
+    #game:has(#endplay.show) canvas { max-height: calc(100dvh - 8.4rem); }
     .hud { display: none; }
     #endplay { margin-top: .2rem; }
+    #endplay.show { margin-top: .15rem; gap: .28rem; }
+    #endplay.show button { padding: .48rem 1rem; }
     body.touch-ui #game.on { padding-bottom: 0; }
   }
   .stick {
@@ -400,15 +411,23 @@ function meYes() {
 function theyYes() {
   return slot === 1 ? rematchYes[1] : rematchYes[0];
 }
+function noteLocalYes() {
+  iSaidYes = true;
+  if (slot === 1) rematchYes[0] = true;
+  if (slot === 2) rematchYes[1] = true;
+}
 function syncEndChrome() {
   const el = document.getElementById("endplay");
-  el.classList.remove("waiting", "offer", "reply");
+  el.classList.remove("waiting", "offer", "reply", "committed");
   if (!el.classList.contains("show") || el.classList.contains("left") || el.classList.contains("declined")) {
     markRematchTapped(el.classList.contains("waiting"));
     return;
   }
   const me = meYes(), they = theyYes();
-  if (me && !they) {
+  if (me && they) {
+    el.classList.add("waiting", "committed");
+    markRematchTapped(true);
+  } else if (me && !they) {
     el.classList.add("waiting");
     markRematchTapped(true);
   } else if (they && !me) {
@@ -422,7 +441,7 @@ function syncEndChrome() {
 function showEndplay(on) {
   const el = document.getElementById("endplay");
   el.classList.toggle("show", !!on);
-  el.classList.remove("left", "declined", "waiting", "offer", "reply");
+  el.classList.remove("left", "declined", "waiting", "offer", "reply", "committed");
   document.getElementById("rematch").hidden = false;
   document.getElementById("again").hidden = false;
   if (!on) {
@@ -441,7 +460,7 @@ function showTheyLeft() {
   iSaidYes = false;
   const el = document.getElementById("endplay");
   el.classList.add("show", "left");
-  el.classList.remove("declined", "waiting", "offer", "reply");
+  el.classList.remove("declined", "waiting", "offer", "reply", "committed");
   document.getElementById("rematch").hidden = true;
   document.getElementById("again").hidden = true;
   markRematchTapped(false);
@@ -451,7 +470,7 @@ function showDeclined() {
   mode = "over";
   const el = document.getElementById("endplay");
   el.classList.add("show", "declined");
-  el.classList.remove("left", "waiting", "offer", "reply");
+  el.classList.remove("left", "waiting", "offer", "reply", "committed");
   document.getElementById("rematch").hidden = true;
   document.getElementById("again").hidden = true;
   markRematchTapped(false);
@@ -478,11 +497,9 @@ function wire(c) {
   conn = c;
   c.on("data", onMsg);
   c.on("close", () => {
-    const waitingRematch = mode === "over" && banner === "That's 3";
-    setBanner("They left");
-    mode = "over";
-    if (waitingRematch) showTheyLeft();
-    else showEndplay(false);
+    if (conn !== c) return;
+    if (!document.getElementById("game").classList.contains("on")) return;
+    showTheyLeft();
   });
 }
 function showHostCode(c) {
@@ -815,6 +832,8 @@ function applyState(s) {
   document.getElementById("msg").textContent = banner || "";
   if (s.want1 != null) rematchYes[0] = !!s.want1;
   if (s.want2 != null) rematchYes[1] = !!s.want2;
+  if (slot === 1 && iSaidYes) rematchYes[0] = true;
+  if (slot === 2 && iSaidYes) rematchYes[1] = true;
   if (s.declinedBy != null) declinedBy = s.declinedBy || 0;
   if (declinedBy === slot) showDeclined();
   else if (declinedBy && declinedBy !== slot) showTheyLeft();
@@ -1067,11 +1086,14 @@ function tick(t) {
   requestAnimationFrame(tick);
 }
 function newFight() {
+  if (mode === "over" && meYes() && theyYes()) return;
+  const oldConn = conn, oldPeer = peer;
+  conn = null; peer = null;
   showEndplay(false);
   setBanner("");
-  try { if (conn) conn.close(); } catch (e) {}
-  try { if (peer) peer.destroy(); } catch (e) {}
-  conn = null; peer = null; slot = 0; p1 = p2 = null; mode = "";
+  try { if (oldConn) oldConn.close(); } catch (e) {}
+  try { if (oldPeer) oldPeer.destroy(); } catch (e) {}
+  slot = 0; p1 = p2 = null; mode = "";
   clearHostPersist();
   document.getElementById("game").classList.remove("on");
   document.getElementById("lobby").classList.remove("hid", "waiting");
@@ -1116,17 +1138,18 @@ document.getElementById("copylink").onclick = () => {
 document.getElementById("rematch").onclick = () => {
   if (mode !== "over" || declinedBy) return;
   if (iSaidYes || document.getElementById("rematch").disabled) return;
-  iSaidYes = true;
+  noteLocalYes();
   if (slot === 1) wantRematch(1);
   else send({ t: "rematch" });
-  syncEndChrome();
+  if (mode === "over") syncEndChrome();
 };
 document.getElementById("accept").onclick = () => {
   if (mode !== "over" || declinedBy) return;
   if (iSaidYes) return;
-  iSaidYes = true;
+  noteLocalYes();
   if (slot === 1) wantRematch(1);
   else send({ t: "rematch" });
+  if (mode === "over") syncEndChrome();
 };
 document.getElementById("decline").onclick = declineRematch;
 document.getElementById("newfight").onclick = newFight;
