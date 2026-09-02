@@ -889,6 +889,13 @@ function stampBody(p, color, k) {
     ctx.stroke();
   }
 }
+function handFrame(p) {
+  if (!p.shoving) return 0;
+  const u = 1 - p.shoving / SHOVE_ANIM;
+  if (u < 0.46) return 3;
+  if (u < 0.72) return 4;
+  return 5;
+}
 function drawPlayer(p) {
   if (!p) return;
   ctx.save();
@@ -896,7 +903,7 @@ function drawPlayer(p) {
   ctx.rotate(p.facing);
   const s = p.alive ? 1 : 0.7;
   ctx.scale(s, s);
-  const frame = p.shoving > 0 ? Math.min(HAND_FRAMES - 1, Math.floor((1 - p.shoving / SHOVE_ANIM) * HAND_FRAMES)) : 0;
+  const frame = handFrame(p);
   const sprite = p.id === 1 ? handTints.p1 : handTints.p2;
   const drawHand = (sheet, size, alpha) => {
     ctx.globalAlpha = alpha;

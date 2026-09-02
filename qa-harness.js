@@ -189,6 +189,9 @@ vm.runInContext('advanceDrain(DRAIN_TIME * 2)', context);
 assert.equal(vm.runInContext('stageR', context), 96, 'Drain should stop at its minimum playable radius');
 vm.runInContext('startBreath("Shove")', context);
 assert.equal(vm.runInContext('stageR', context), 168, 'each round should restore the dry stage');
+assert.equal(vm.runInContext('handFrame({shoving:SHOVE_ANIM})', context), 3, 'shove input should show the strike pose immediately');
+assert.equal(vm.runInContext('handFrame({shoving:SHOVE_ANIM * 0.2})', context), 5, 'shove animation should settle after the strike');
+assert.equal(vm.runInContext('handFrame({shoving:0})', context), 0, 'idle hand should return to rest');
 
 vm.runInContext('Peer = undefined; peer = null; hostRoom("WXYZ")', context);
 assert.match(els.err.textContent, /failed to load/i, 'missing PeerJS should show a useful error');
