@@ -20,8 +20,9 @@
       </div>
     </div>
     <div class="codebig" id="codebig" hidden></div>
-    <p class="sub" id="wait" hidden>Waiting for player 2. Share this page or the code.</p>
+    <p class="sub" id="wait" hidden>You are host · P1. Hands appear when player 2 joins.</p>
     <button type="button" class="ghost" id="copylink" hidden>Copy link</button>
+    <button type="button" class="ghost" id="cancelroom" hidden>Cancel room</button>
     <div class="err" id="err"></div>
     <p class="credit">A Static Crown game</p>
   </div>
@@ -36,7 +37,7 @@
     </div>
     <div class="hud">
       <span id="hint">WASD · Space shove</span>
-      <span id="roomhud"></span>
+      <span class="room-controls"><span id="roomhud"></span><button type="button" class="leave-room" id="leave">Leave</button></span>
     </div>
     <div id="endplay">
       <p class="again" id="again">Again?</p>

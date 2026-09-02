@@ -356,6 +356,7 @@ function showHostCode(c) {
   document.getElementById("codebig").textContent = code;
   document.getElementById("wait").hidden = false;
   document.getElementById("copylink").hidden = false;
+  document.getElementById("cancelroom").hidden = false;
   document.getElementById("roomhud").textContent = "Room " + code;
   const u = roomLink();
   history.replaceState(null, "", u);
@@ -1111,6 +1112,7 @@ function newFight() {
   document.getElementById("codebig").textContent = "";
   document.getElementById("wait").hidden = true;
   document.getElementById("copylink").hidden = true;
+  document.getElementById("cancelroom").hidden = true;
   document.getElementById("roomhud").textContent = "";
   const u = new URL(location.href);
   u.searchParams.delete("room");
@@ -1168,6 +1170,8 @@ document.getElementById("accept").onclick = () => {
 };
 document.getElementById("decline").onclick = declineRematch;
 document.getElementById("newfight").onclick = newFight;
+document.getElementById("cancelroom").onclick = newFight;
+document.getElementById("leave").onclick = newFight;
 addEventListener("pageshow", e => { if (e.persisted) bootNet(); });
 addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") { releaseControls(); return; }

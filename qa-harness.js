@@ -8,6 +8,8 @@ assert.match(html, /<link rel="stylesheet" href="styles\.css">/, 'page should lo
 assert.match(html, /<script src="game\.js"><\/script>/, 'page should load the extracted game logic');
 assert.ok(fs.readFileSync('styles.css', 'utf8').includes('.lobby'), 'stylesheet should contain the game layout');
 assert.ok(fs.statSync('assets/hand_sheet.png').size > 1000, 'Drain hand animation sheet should be present');
+assert.match(html, /id="cancelroom"/, 'waiting hosts should have a cancel-room control');
+assert.match(html, /id="leave"/, 'players should have a leave-room control');
 
 function classList() {
   const values = new Set();
@@ -91,6 +93,8 @@ assert.equal(els.game.classList.contains('on'), true, 'first guest should start 
 assert.equal(vm.runInContext('conn', context), first, 'first guest should own the connection');
 assert.ok(storage.get('shove-host'), 'host identity should survive an in-game refresh');
 assert.ok(first.sent.some(msg => msg.t === 'welcome'), 'accepted guest should receive an explicit welcome');
+assert.equal(typeof els.cancelroom.onclick, 'function', 'cancel-room control should be wired');
+assert.equal(typeof els.leave.onclick, 'function', 'leave-room control should be wired');
 
 const second = new FakeConn();
 FakePeer.latest.emit('connection', second);
@@ -192,6 +196,15 @@ assert.equal(vm.runInContext('stageR', context), 168, 'each round should restore
 assert.equal(vm.runInContext('handFrame({shoving:SHOVE_ANIM})', context), 3, 'shove input should show the strike pose immediately');
 assert.equal(vm.runInContext('handFrame({shoving:SHOVE_ANIM * 0.2})', context), 5, 'shove animation should settle after the strike');
 assert.equal(vm.runInContext('handFrame({shoving:0})', context), 0, 'idle hand should return to rest');
+
+context.Peer = FakePeer;
+vm.runInContext('newFight(); hostRoom("CANC")', context);
+FakePeer.latest.emit('open');
+assert.equal(els.cancelroom.hidden, false, 'waiting host should see Cancel room');
+els.cancelroom.onclick();
+assert.equal(vm.runInContext('slot', context), 0, 'Cancel room should release the host slot');
+assert.equal(els.lobby.classList.contains('waiting'), false, 'Cancel room should return to the lobby');
+assert.equal(els.cancelroom.hidden, true, 'Cancel room should hide after returning');
 
 vm.runInContext('Peer = undefined; peer = null; hostRoom("WXYZ")', context);
 assert.match(els.err.textContent, /failed to load/i, 'missing PeerJS should show a useful error');
