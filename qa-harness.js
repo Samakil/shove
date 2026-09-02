@@ -143,6 +143,20 @@ runTimersThrough(3000);
 assert.match(els.err.textContent, /did not accept/i, 'guest handshake should time out cleanly');
 assert.equal(els.join.disabled, false, 'join controls should recover after a failed handshake');
 
+context.Peer = FakePeer;
+vm.runInContext('hostRoom("ABCD")', context);
+const stalePeer = FakePeer.latest;
+vm.runInContext('hostRoom("EFGH")', context);
+const currentPeer = FakePeer.latest;
+currentPeer.emit('open');
+assert.equal(vm.runInContext('code', context), 'EFGH', 'newest host attempt should own the room code');
+stalePeer.emit('open');
+assert.equal(vm.runInContext('code', context), 'EFGH', 'stale open event must not replace the room code');
+stalePeer.emit('error', {type:'unavailable-id'});
+runTimersThrough(1000);
+assert.equal(vm.runInContext('peer', context), currentPeer, 'stale peer error must not replace the current peer');
+assert.equal(currentPeer.destroyed, false, 'stale peer error must not destroy the current room');
+
 vm.runInContext('Peer = undefined; peer = null; hostRoom("WXYZ")', context);
 assert.match(els.err.textContent, /failed to load/i, 'missing PeerJS should show a useful error');
 

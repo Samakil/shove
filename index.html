@@ -519,6 +519,9 @@ function setJoinBusy(on) {
   document.getElementById("join").disabled = !!on;
   document.getElementById("codein").disabled = !!on;
 }
+function setHostBusy(on) {
+  document.getElementById("create").disabled = !!on;
+}
 function failGuestJoin(message) {
   clearTimeout(joinAcceptT); joinAcceptT = 0; joiningCode = "";
   const oldConn = conn, oldPeer = peer;
@@ -606,8 +609,16 @@ function ensureHostBroker() {
   hostRoom(c);
 }
 function bindHostPeer(tryCode, existingCode, n) {
-  peer.on("open", () => { hostOpening = false; slot = 1; showHostCode(tryCode); });
-  peer.on("connection", c => {
+  const boundPeer = peer;
+  boundPeer.on("open", () => {
+    if (peer !== boundPeer) return;
+    hostOpening = false; slot = 1; showHostCode(tryCode);
+  });
+  boundPeer.on("connection", c => {
+    if (peer !== boundPeer) {
+      c.on("open", () => { try { c.close(); } catch (e) {} });
+      return;
+    }
     const gameActive = document.getElementById("game").classList.contains("on");
     if (incomingPending || gameActive || (conn && conn.open)) {
       c.on("open", () => {
@@ -633,17 +644,20 @@ function bindHostPeer(tryCode, existingCode, n) {
       if (conn !== c) incomingPending = false;
     });
   });
-  peer.on("disconnected", () => {
+  boundPeer.on("disconnected", () => {
+    if (peer !== boundPeer) return;
     if (!hostIsWaiting()) return;
     showErr("");
     if (document.visibilityState === "visible") scheduleHostReconnect(tryCode);
   });
-  peer.on("close", () => {
+  boundPeer.on("close", () => {
+    if (peer !== boundPeer) return;
     if (!hostIsWaiting()) return;
     showErr("");
     if (document.visibilityState === "visible") scheduleHostReconnect(tryCode);
   });
-  peer.on("error", err => {
+  boundPeer.on("error", err => {
+    if (peer !== boundPeer) return;
     if (err.type === "unavailable-id") {
       hostOpening = false;
       if (existingCode && n < 6) {
@@ -662,12 +676,14 @@ function bindHostPeer(tryCode, existingCode, n) {
       return;
     }
     hostOpening = false;
+    setHostBusy(false);
     document.getElementById("lobby").classList.remove("waiting");
     showErr("Could not create a room.");
   });
 }
 function hostRoom(existingCode, attempt) {
   showErr("");
+  setHostBusy(true);
   const tryCode = normalizeCode(existingCode) || makeCode();
   const n = attempt || 0;
   if (existingCode) {
@@ -676,10 +692,12 @@ function hostRoom(existingCode, attempt) {
   }
   hostOpening = true;
   incomingPending = false;
-  if (peer) { try { peer.destroy(); } catch (e) {} }
+  const oldPeer = peer;
+  peer = null;
+  if (oldPeer) { try { oldPeer.destroy(); } catch (e) {} }
   hostOpening = true;
   peer = makePeer(PEER_PREFIX + tryCode);
-  if (!peer) { hostOpening = false; return; }
+  if (!peer) { hostOpening = false; setHostBusy(false); return; }
   bindHostPeer(tryCode, existingCode, n);
 }
 function joinRoom(raw) {
@@ -689,7 +707,9 @@ function joinRoom(raw) {
   setJoinBusy(true);
   clearTimeout(joinAcceptT); joinAcceptT = 0; joiningCode = "";
   clearHostPersist();
-  if (peer) { try { peer.destroy(); } catch (e) {} }
+  const oldPeer = peer;
+  peer = null;
+  if (oldPeer) { try { oldPeer.destroy(); } catch (e) {} }
   const ERR_NO_ROOM = "No room. Check the code.";
   const ERR_NO_CONN = "Couldn't connect. The network may block peer-to-peer play.";
   let joined = false, missing = false, timer = 0;
@@ -700,22 +720,26 @@ function joinRoom(raw) {
   }
   peer = makePeer();
   if (!peer) { setJoinBusy(false); return; }
-  peer.on("open", () => {
-    const cnx = peer.connect(PEER_PREFIX + c, { reliable: true });
+  const joiningPeer = peer;
+  joiningPeer.on("open", () => {
+    if (peer !== joiningPeer) return;
+    const cnx = joiningPeer.connect(PEER_PREFIX + c, { reliable: true });
     timer = setTimeout(() => failJoin(missing ? ERR_NO_ROOM : ERR_NO_CONN), 8000);
     cnx.on("open", () => {
+      if (peer !== joiningPeer) { try { cnx.close(); } catch (e) {} return; }
       joined = true;
       if (timer) { clearTimeout(timer); timer = 0; }
       joiningCode = c;
       wire(cnx);
       joinAcceptT = setTimeout(() => failGuestJoin("Room did not accept the connection. Try again."), 3000);
     });
-    cnx.on("error", () => failJoin(missing ? ERR_NO_ROOM : ERR_NO_CONN));
+    cnx.on("error", () => { if (peer === joiningPeer) failJoin(missing ? ERR_NO_ROOM : ERR_NO_CONN); });
     cnx.on("iceStateChanged", state => {
-      if (state === "failed") failJoin(ERR_NO_CONN);
+      if (peer === joiningPeer && state === "failed") failJoin(ERR_NO_CONN);
     });
   });
-  peer.on("error", err => {
+  joiningPeer.on("error", err => {
+    if (peer !== joiningPeer) return;
     if (joined) return;
     if (err && err.type === "peer-unavailable") {
       missing = true;
@@ -1189,7 +1213,7 @@ function newFight() {
   try { if (oldConn) oldConn.close(); } catch (e) {}
   try { if (oldPeer) oldPeer.destroy(); } catch (e) {}
   slot = 0; p1 = p2 = null; mode = ""; incomingPending = false;
-  clearTimeout(joinAcceptT); joinAcceptT = 0; joiningCode = ""; setJoinBusy(false);
+  clearTimeout(joinAcceptT); joinAcceptT = 0; joiningCode = ""; setJoinBusy(false); setHostBusy(false);
   clearHostPersist();
   document.getElementById("game").classList.remove("on");
   document.getElementById("lobby").classList.remove("hid", "waiting");
