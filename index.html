@@ -14,13 +14,16 @@
     --p2: #ff5a3d;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body {
-    margin: 0; height: 100%; max-width: 100%; overflow-x: hidden;
+  html {
+    margin: 0; height: auto; min-height: 100%; max-width: 100%;
+    overflow-x: hidden; overflow-y: auto;
     background: var(--bg); color: var(--ink); font-family: ui-sans-serif, system-ui, sans-serif;
   }
   body {
-    display: flex; flex-direction: column; align-items: center; justify-content: safe center;
-    min-height: 100dvh; padding: 12px; width: 100%;
+    margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center;
+    min-height: 100dvh; height: auto; padding: 12px; width: 100%; max-width: 100%;
+    overflow-x: hidden;
+    background: var(--bg); color: var(--ink); font-family: inherit;
   }
   h1 { font-size: 1.1rem; letter-spacing: .18em; text-transform: uppercase; margin: 0 0 .35rem; font-weight: 700; }
   .sub { color: var(--muted); font-size: .8rem; margin: 0 0 .35rem; text-align: center; }
@@ -49,6 +52,7 @@
     max-width: 100%; max-height: calc(100dvh - 8.5rem);
     width: auto; height: auto; touch-action: none;
   }
+  #game:has(#endplay.show) canvas { max-height: calc(100dvh - 13.5rem); }
   .hud { width: min(720px, 100%); display: flex; justify-content: space-between; margin-top: .7rem; color: var(--muted); font-size: .85rem; }
   .msg {
     position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%);
@@ -62,7 +66,7 @@
   }
   button.ghost { background: transparent; color: var(--ink); border: 1px solid #3a4b66; }
   #endplay { display: none; flex-direction: column; align-items: center; margin-top: .8rem; gap: .4rem; }
-  #endplay.show { display: flex; }
+  #endplay.show { display: flex; flex-shrink: 0; margin-top: .45rem; gap: .35rem; }
   .again {
     margin: 0; font-size: 1.05rem; font-weight: 800; letter-spacing: .06em;
     text-transform: uppercase; text-shadow: 0 2px 14px #000;
@@ -93,7 +97,7 @@
   .codebig { font-size: 3.2rem; letter-spacing: .28em; font-weight: 800; margin: .4rem 0; max-width: 100%; }
   .err { color: #ff7a6a; min-height: 1.2em; font-size: .85rem; }
   #game { display: none; flex-direction: column; align-items: center; max-width: 100%; }
-  #game.on { display: flex; }
+  #game.on { display: flex; flex-shrink: 0; }
   #lobby.hid { display: none; }
   .pads {
     display: none !important;
@@ -114,8 +118,8 @@
     body.touch-ui #game.on { padding-bottom: 7.5rem; }
   }
   @media (orientation: landscape) and (max-height: 500px) {
-    html, body { overflow: hidden; height: 100%; max-height: 100%; }
-    body { padding: 4px 10px; justify-content: flex-start; min-height: 0; }
+    html, body { overflow-x: hidden; overflow-y: auto; height: auto; max-height: none; }
+    body { padding: 4px 10px; justify-content: flex-start; min-height: 100dvh; }
     h1 { font-size: .85rem; margin: 0 0 .08rem; }
     .sub { font-size: .65rem; margin: 0 0 .08rem; }
     .pitch { font-size: .72rem; margin: 0 0 .35rem; }
@@ -123,8 +127,11 @@
     .score { margin-bottom: .08rem; gap: 1.4rem; }
     .score b { font-size: 1.15rem; }
     canvas { max-height: calc(100dvh - 6.6rem); }
+    #game:has(#endplay.show) canvas { max-height: calc(100dvh - 8.4rem); }
     .hud { display: none; }
     #endplay { margin-top: .2rem; }
+    #endplay.show { margin-top: .15rem; gap: .28rem; }
+    #endplay.show button { padding: .48rem 1rem; }
     body.touch-ui #game.on { padding-bottom: 0; }
   }
   .stick {
@@ -478,11 +485,9 @@ function wire(c) {
   conn = c;
   c.on("data", onMsg);
   c.on("close", () => {
-    const waitingRematch = mode === "over" && banner === "That's 3";
-    setBanner("They left");
-    mode = "over";
-    if (waitingRematch) showTheyLeft();
-    else showEndplay(false);
+    if (conn !== c) return;
+    if (!document.getElementById("game").classList.contains("on")) return;
+    showTheyLeft();
   });
 }
 function showHostCode(c) {
@@ -1067,11 +1072,13 @@ function tick(t) {
   requestAnimationFrame(tick);
 }
 function newFight() {
+  const oldConn = conn, oldPeer = peer;
+  conn = null; peer = null;
   showEndplay(false);
   setBanner("");
-  try { if (conn) conn.close(); } catch (e) {}
-  try { if (peer) peer.destroy(); } catch (e) {}
-  conn = null; peer = null; slot = 0; p1 = p2 = null; mode = "";
+  try { if (oldConn) oldConn.close(); } catch (e) {}
+  try { if (oldPeer) oldPeer.destroy(); } catch (e) {}
+  slot = 0; p1 = p2 = null; mode = "";
   clearHostPersist();
   document.getElementById("game").classList.remove("on");
   document.getElementById("lobby").classList.remove("hid", "waiting");
