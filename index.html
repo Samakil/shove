@@ -68,6 +68,10 @@
     text-transform: uppercase; text-shadow: 0 2px 14px #000;
   }
   .endbtns { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+  #rematch.tapped, #rematch:disabled {
+    opacity: .42; background: #9aa3b3; color: #222; cursor: default; pointer-events: none;
+  }
+  #endplay.left .again, #endplay.left #rematch { display: none; }
   .lobby { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: min(360px, 100%); max-width: 100%; }
   #lobbyStart { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: 100%; min-width: 0; }
   #lobby.waiting #lobbyStart { display: none; }
@@ -339,8 +343,35 @@ function punchScore(id) {
   void el.offsetWidth;
   el.classList.add("punch");
 }
+let rematchYes = [false, false];
+let iSaidYes = false;
+function markRematchTapped(on) {
+  const btn = document.getElementById("rematch");
+  btn.disabled = !!on;
+  btn.classList.toggle("tapped", !!on);
+}
 function showEndplay(on) {
-  document.getElementById("endplay").classList.toggle("show", !!on);
+  const el = document.getElementById("endplay");
+  el.classList.toggle("show", !!on);
+  el.classList.remove("left");
+  document.getElementById("rematch").hidden = false;
+  document.getElementById("again").hidden = false;
+  if (!on) {
+    rematchYes = [false, false];
+    iSaidYes = false;
+    markRematchTapped(false);
+  }
+}
+function showTheyLeft() {
+  setBanner("They left");
+  mode = "over";
+  rematchYes = [false, false];
+  iSaidYes = false;
+  const el = document.getElementById("endplay");
+  el.classList.add("show", "left");
+  document.getElementById("rematch").hidden = true;
+  document.getElementById("again").hidden = true;
+  markRematchTapped(false);
 }
 function setBanner(text) {
   banner = text || "";
@@ -364,9 +395,11 @@ function wire(c) {
   conn = c;
   c.on("data", onMsg);
   c.on("close", () => {
+    const waitingRematch = mode === "over" && banner === "That's 3";
     setBanner("They left");
     mode = "over";
-    showEndplay(false);
+    if (waitingRematch) showTheyLeft();
+    else showEndplay(false);
   });
 }
 function showHostCode(c) {
@@ -517,7 +550,17 @@ function onMsg(msg) {
   if (!msg || !msg.t) return;
   if (msg.t === "in" && slot === 1) remoteIn = { x: msg.x || 0, y: msg.y || 0, shove: !!msg.shove };
   else if (msg.t === "state" && slot === 2) applyState(msg);
-  else if (msg.t === "rematch" && slot === 1) resetMatch();
+  else if (msg.t === "rematch" && slot === 1) wantRematch(2);
+}
+function wantRematch(who) {
+  if (mode !== "over" || banner !== "That's 3") return;
+  rematchYes[who - 1] = true;
+  if (slot === who) {
+    iSaidYes = true;
+    markRematchTapped(true);
+  }
+  if (rematchYes[0] && rematchYes[1]) resetMatch();
+  else if (slot === 1) send({ t: "state", ...packState() });
 }
 function enterGame() {
   clearHostPersist();
@@ -625,8 +668,11 @@ function roundOver(loser) {
   punchScore(win);
   if (scores[0] >= 3 || scores[1] >= 3) {
     winner = scores[0] >= 3 ? 1 : 2;
+    rematchYes = [false, false];
+    iSaidYes = false;
     setBanner("That's 3");
     showEndplay(true);
+    markRematchTapped(false);
     mode = "over";
   } else {
     const text = (scores[0] === 2 && scores[1] === 2) ? "Last one" : "Shove";
@@ -635,7 +681,7 @@ function roundOver(loser) {
 }
 function packState() {
   const pack = p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, facing: p.facing, shoving: p.shoving, hit: p.hit, cd: p.cd, alive: p.alive });
-  return { p1: pack(p1), p2: pack(p2), s1: scores[0], s2: scores[1], mode, banner, bannerT, winner, camKick, camAng, impacts };
+  return { p1: pack(p1), p2: pack(p2), s1: scores[0], s2: scores[1], mode, banner, bannerT, winner, camKick, camAng, impacts, want1: rematchYes[0], want2: rematchYes[1] };
 }
 function applyState(s) {
   hostSnap = s;
@@ -657,7 +703,15 @@ function applyState(s) {
   if (s.s1 > prev1) punchScore(1);
   if (s.s2 > prev2) punchScore(2);
   document.getElementById("msg").textContent = banner || "";
-  showEndplay(mode === "over" && banner === "That's 3");
+  if (s.want1 != null) rematchYes[0] = !!s.want1;
+  if (s.want2 != null) rematchYes[1] = !!s.want2;
+  if (mode === "over" && banner === "They left") showTheyLeft();
+  else if (mode === "over" && banner === "That's 3") {
+    showEndplay(true);
+    markRematchTapped(iSaidYes || (slot === 1 ? rematchYes[0] : rematchYes[1]));
+  } else {
+    showEndplay(false);
+  }
 }
 function lerpToward(p, d, k) {
   if (!p || !d) return;
@@ -920,7 +974,12 @@ document.getElementById("copylink").onclick = () => {
   navigator.clipboard.writeText(url).catch(() => {});
 };
 document.getElementById("rematch").onclick = () => {
-  if (slot === 1) resetMatch(); else send({ t: "rematch" });
+  if (mode !== "over" || banner !== "That's 3") return;
+  if (iSaidYes || document.getElementById("rematch").disabled) return;
+  iSaidYes = true;
+  markRematchTapped(true);
+  if (slot === 1) wantRematch(1);
+  else send({ t: "rematch" });
 };
 document.getElementById("newfight").onclick = newFight;
 addEventListener("pageshow", e => { if (e.persisted) bootNet(); });
