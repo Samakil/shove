@@ -381,6 +381,84 @@ function showHostCode(c) {
   history.replaceState(null, "", u);
   persistHost(code);
 }
+function hostIsWaiting() {
+  if (document.getElementById("game").classList.contains("on")) return false;
+  if (slot !== 1) return false;
+  const saved = readHostPersist();
+  return !!(saved && saved.code);
+}
+function hostBrokerDown() {
+  if (!peer) return true;
+  if (peer.destroyed) return true;
+  if (peer.disconnected) return true;
+  return false;
+}
+function isBrokerDrop(err) {
+  const t = err && err.type;
+  return t === "network" || t === "socket-closed" || t === "socket-error" || t === "server-error" || t === "disconnected";
+}
+let hostRejoinT = 0, hostOpening = false;
+function scheduleHostReconnect(c) {
+  const codeToUse = normalizeCode(c) || (readHostPersist() && readHostPersist().code) || code;
+  if (!codeToUse) return;
+  if (document.getElementById("game").classList.contains("on")) return;
+  showErr("");
+  slot = 1;
+  showHostCode(codeToUse);
+  clearTimeout(hostRejoinT);
+  hostRejoinT = setTimeout(() => ensureHostBroker(), 280);
+}
+function ensureHostBroker() {
+  if (document.getElementById("game").classList.contains("on")) return;
+  const saved = readHostPersist();
+  const c = (saved && saved.code) || (slot === 1 ? code : "");
+  if (!c || (slot !== 1 && !saved)) return;
+  if (slot !== 1 && saved) slot = 1;
+  showErr("");
+  showHostCode(c);
+  if (hostOpening) return;
+  if (peer && !peer.destroyed && !peer.disconnected) return;
+  if (peer && !peer.destroyed && peer.disconnected) {
+    try { peer.reconnect(); return; } catch (e) {}
+  }
+  hostRoom(c);
+}
+function bindHostPeer(tryCode, existingCode, n) {
+  peer.on("open", () => { hostOpening = false; slot = 1; showHostCode(tryCode); });
+  peer.on("connection", c => { c.on("open", () => { wire(c); enterGame(); }); });
+  peer.on("disconnected", () => {
+    if (!hostIsWaiting()) return;
+    showErr("");
+    if (document.visibilityState === "visible") scheduleHostReconnect(tryCode);
+  });
+  peer.on("close", () => {
+    if (!hostIsWaiting()) return;
+    showErr("");
+    if (document.visibilityState === "visible") scheduleHostReconnect(tryCode);
+  });
+  peer.on("error", err => {
+    if (err.type === "unavailable-id") {
+      hostOpening = false;
+      if (existingCode && n < 6) {
+        setTimeout(() => hostRoom(existingCode, n + 1), 200 + n * 250);
+        return;
+      }
+      if (!existingCode) hostRoom();
+      else scheduleHostReconnect(existingCode);
+      return;
+    }
+    if (hostIsWaiting() || existingCode) {
+      showErr("");
+      if (isBrokerDrop(err) && document.visibilityState === "visible") {
+        scheduleHostReconnect(tryCode);
+      }
+      return;
+    }
+    hostOpening = false;
+    document.getElementById("lobby").classList.remove("waiting");
+    showErr("Could not create a room.");
+  });
+}
 function hostRoom(existingCode, attempt) {
   showErr("");
   const tryCode = normalizeCode(existingCode) || makeCode();
@@ -389,23 +467,11 @@ function hostRoom(existingCode, attempt) {
     slot = 1;
     showHostCode(tryCode);
   }
+  hostOpening = true;
   if (peer) { try { peer.destroy(); } catch (e) {} }
+  hostOpening = true;
   peer = new Peer(PEER_PREFIX + tryCode);
-  peer.on("open", () => { slot = 1; showHostCode(tryCode); });
-  peer.on("connection", c => { c.on("open", () => { wire(c); enterGame(); }); });
-  peer.on("error", err => {
-    if (err.type === "unavailable-id") {
-      if (existingCode && n < 6) {
-        setTimeout(() => hostRoom(existingCode, n + 1), 200 + n * 250);
-        return;
-      }
-      if (!existingCode) hostRoom();
-      else showErr("Still opening the room. Stay on this page.");
-      return;
-    }
-    document.getElementById("lobby").classList.remove("waiting");
-    showErr(err.message || "Could not create a room.");
-  });
+  bindHostPeer(tryCode, existingCode, n);
 }
 function joinRoom(raw) {
   showErr("");
@@ -826,11 +892,13 @@ function newFight() {
 }
 function bootNet() {
   if (document.getElementById("game").classList.contains("on")) return;
-  if (slot === 1 && peer && !peer.destroyed) return;
+  if (slot === 1 && peer && !peer.destroyed && !peer.disconnected) return;
   const q = normalizeCode(new URLSearchParams(location.search).get("room"));
   const saved = readHostPersist();
   if (saved && (!q || q === saved.code)) {
-    hostRoom(saved.code);
+    slot = 1;
+    showHostCode(saved.code);
+    ensureHostBroker();
     return;
   }
   if (q) {
@@ -856,6 +924,11 @@ document.getElementById("rematch").onclick = () => {
 };
 document.getElementById("newfight").onclick = newFight;
 addEventListener("pageshow", e => { if (e.persisted) bootNet(); });
+addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (!hostIsWaiting() && !(readHostPersist() && slot === 1)) return;
+  if (hostBrokerDown()) ensureHostBroker();
+});
 last = performance.now();
 requestAnimationFrame(tick);
 bootNet();
