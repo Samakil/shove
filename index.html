@@ -263,6 +263,15 @@ function setTouchUI(on) {
     if (shoveBtn) shoveBtn.classList.remove("held");
   }
 }
+function releaseControls() {
+  keys.clear();
+  stick.x = 0; stick.y = 0; stick.pid = null;
+  pad.shove = false;
+  const knob = document.getElementById("stickKnob");
+  if (knob) knob.style.transform = "translate(0px, 0px)";
+  const shoveBtn = document.getElementById("shoveBtn");
+  if (shoveBtn) shoveBtn.classList.remove("held");
+}
 setTouchUI(preferTouchUI());
 try {
   const coarse = matchMedia("(pointer: coarse)");
@@ -281,6 +290,7 @@ addEventListener("keydown", e => {
   }
 });
 addEventListener("keyup", e => keys.delete(e.code));
+addEventListener("blur", releaseControls);
 (function bindTouchControls() {
   const stickEl = document.getElementById("stick");
   const knobEl = document.getElementById("stickKnob");
@@ -341,6 +351,7 @@ function makePlayer(id, color, x) {
 const HOST_KEY = "shove-host";
 let slot = 0, code = "", peer = null, conn = null;
 let incomingPending = false;
+let joinAcceptT = 0, joiningCode = "";
 let p1, p2, scores, mode, banner, bannerT, last, winner;
 let remoteIn = { x: 0, y: 0, shove: false };
 let snapAcc = 0;
@@ -493,7 +504,32 @@ function updateShoveBtn() {
   btn.classList.toggle("dead", dead);
 }
 function showErr(m) { document.getElementById("err").textContent = m || ""; }
-function send(obj) { if (conn && conn.open) conn.send(obj); }
+function send(obj) {
+  const c = conn;
+  if (!c || !c.open) return false;
+  try {
+    c.send(obj);
+    return true;
+  } catch (e) {
+    try { c.close(); } catch (closeErr) {}
+    return false;
+  }
+}
+function setJoinBusy(on) {
+  document.getElementById("join").disabled = !!on;
+  document.getElementById("codein").disabled = !!on;
+}
+function failGuestJoin(message) {
+  clearTimeout(joinAcceptT); joinAcceptT = 0; joiningCode = "";
+  const oldConn = conn, oldPeer = peer;
+  conn = null; peer = null; slot = 0;
+  try { if (oldConn) oldConn.close(); } catch (e) {}
+  try { if (oldPeer) oldPeer.destroy(); } catch (e) {}
+  setJoinBusy(false);
+  document.getElementById("game").classList.remove("on");
+  document.getElementById("lobby").classList.remove("hid");
+  showErr(message || "Could not join the room.");
+}
 function makePeer(id) {
   if (typeof Peer !== "function") {
     showErr("Online service failed to load. Refresh and try again.");
@@ -574,7 +610,10 @@ function bindHostPeer(tryCode, existingCode, n) {
   peer.on("connection", c => {
     const gameActive = document.getElementById("game").classList.contains("on");
     if (incomingPending || gameActive || (conn && conn.open)) {
-      c.on("open", () => { try { c.close(); } catch (e) {} });
+      c.on("open", () => {
+        try { c.send({ t: "reject", reason: "full" }); } catch (e) {}
+        setTimeout(() => { try { c.close(); } catch (e) {} }, 120);
+      });
       return;
     }
     incomingPending = true;
@@ -587,6 +626,7 @@ function bindHostPeer(tryCode, existingCode, n) {
       }
       incomingPending = false;
       wire(c);
+      send({ t: "welcome", code: tryCode });
       enterGame();
     });
     c.on("close", () => {
@@ -646,6 +686,8 @@ function joinRoom(raw) {
   showErr("");
   const c = normalizeCode(raw);
   if (c.length < 4) { showErr("Type a 4-character code."); return; }
+  setJoinBusy(true);
+  clearTimeout(joinAcceptT); joinAcceptT = 0; joiningCode = "";
   clearHostPersist();
   if (peer) { try { peer.destroy(); } catch (e) {} }
   const ERR_NO_ROOM = "No room. Check the code.";
@@ -654,17 +696,19 @@ function joinRoom(raw) {
   function failJoin(msg) {
     if (joined) return;
     if (timer) { clearTimeout(timer); timer = 0; }
-    showErr(msg);
+    failGuestJoin(msg);
   }
   peer = makePeer();
-  if (!peer) return;
+  if (!peer) { setJoinBusy(false); return; }
   peer.on("open", () => {
     const cnx = peer.connect(PEER_PREFIX + c, { reliable: true });
     timer = setTimeout(() => failJoin(missing ? ERR_NO_ROOM : ERR_NO_CONN), 8000);
     cnx.on("open", () => {
       joined = true;
       if (timer) { clearTimeout(timer); timer = 0; }
-      slot = 2; code = c; wire(cnx); enterGame();
+      joiningCode = c;
+      wire(cnx);
+      joinAcceptT = setTimeout(() => failGuestJoin("Room did not accept the connection. Try again."), 3000);
     });
     cnx.on("error", () => failJoin(missing ? ERR_NO_ROOM : ERR_NO_CONN));
     cnx.on("iceStateChanged", state => {
@@ -679,13 +723,26 @@ function joinRoom(raw) {
     } else if (err && err.type === "webrtc") {
       failJoin(ERR_NO_CONN);
     } else {
-      showErr(err.message || "Could not join.");
+      failJoin(err.message || "Could not join.");
     }
   });
 }
+function cleanAxis(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(-1, Math.min(1, n)) : 0;
+}
 function onMsg(msg) {
   if (!msg || !msg.t) return;
-  if (msg.t === "in" && slot === 1) remoteIn = { x: msg.x || 0, y: msg.y || 0, shove: !!msg.shove };
+  if (msg.t === "welcome" && slot === 0 && joiningCode) {
+    clearTimeout(joinAcceptT); joinAcceptT = 0;
+    slot = 2; code = normalizeCode(msg.code) || joiningCode; joiningCode = "";
+    setJoinBusy(false);
+    enterGame();
+  }
+  else if (msg.t === "reject" && slot === 0 && joiningCode) {
+    failGuestJoin(msg.reason === "full" ? "Room is already in a match." : "The room rejected the connection.");
+  }
+  else if (msg.t === "in" && slot === 1) remoteIn = { x: cleanAxis(msg.x), y: cleanAxis(msg.y), shove: !!msg.shove };
   else if (msg.t === "state" && slot === 2) applyState(msg);
   else if (msg.t === "rematch" && slot === 1) wantRematch(2);
   else if (msg.t === "decline" && slot === 1) hostGotDecline(2);
@@ -1132,6 +1189,7 @@ function newFight() {
   try { if (oldConn) oldConn.close(); } catch (e) {}
   try { if (oldPeer) oldPeer.destroy(); } catch (e) {}
   slot = 0; p1 = p2 = null; mode = ""; incomingPending = false;
+  clearTimeout(joinAcceptT); joinAcceptT = 0; joiningCode = ""; setJoinBusy(false);
   clearHostPersist();
   document.getElementById("game").classList.remove("on");
   document.getElementById("lobby").classList.remove("hid", "waiting");
@@ -1198,7 +1256,7 @@ document.getElementById("decline").onclick = declineRematch;
 document.getElementById("newfight").onclick = newFight;
 addEventListener("pageshow", e => { if (e.persisted) bootNet(); });
 addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible") return;
+  if (document.visibilityState !== "visible") { releaseControls(); return; }
   if (!hostIsWaiting() && !(readHostPersist() && slot === 1)) return;
   if (hostBrokerDown()) ensureHostBroker();
 });
