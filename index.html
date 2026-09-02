@@ -207,7 +207,8 @@ const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 const CX = W / 2, CY = H / 2 + 8;
 const STAGE_R = 168, PR = 18, SPEED = 240, FRICTION = 5.2;
-const SHOVE_CD = 0.4, SHOVE_RANGE = 46, SHOVE_SELF = 210, SHOVE_HIT = 560, SNAP_HZ = 20;
+const SHOVE_CD = 0.8, SHOVE_RANGE = 46, SHOVE_SELF = 210, SHOVE_HIT = 560, SNAP_HZ = 20;
+const HITSTOP = 0.1;
 const ALPH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PEER_PREFIX = "bstrika-shove-";
 const keys = new Set();
@@ -245,8 +246,10 @@ try {
 } catch (e) {}
 addEventListener("pointerdown", e => {
   if (e.pointerType === "touch") setTouchUI(true);
+  unlockAudio();
 }, true);
 addEventListener("keydown", e => {
+  unlockAudio();
   keys.add(e.code);
   if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code)) e.preventDefault();
   if (PLAY_KEYS.includes(e.code) && (!e.target || e.target.tagName !== "INPUT") && !preferTouchUI()) {
@@ -318,6 +321,33 @@ let remoteIn = { x: 0, y: 0, shove: false };
 let snapAcc = 0;
 let hostSnap = null;
 let camKick = 0, camAng = 0, impacts = [];
+let hitstop = 0, pendingKick = null;
+let audioCtx = null;
+function unlockAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch (e) {}
+}
+function playBass() {
+  try {
+    unlockAudio();
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(88, t);
+    osc.frequency.exponentialRampToValueAtTime(42, t + 0.1);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.6, t + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.14);
+  } catch (e) {}
+}
 function normalizeCode(raw) {
   return String(raw || "").toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 4);
 }
@@ -576,7 +606,7 @@ function resetMatch() {
   document.getElementById("s1").classList.remove("punch");
   document.getElementById("s2").classList.remove("punch");
   showEndplay(false);
-  camKick = 0; impacts = [];
+  camKick = 0; impacts = []; hitstop = 0; pendingKick = null;
   startBreath("Shove");
   if (slot === 1) send({ t: "state", ...packState() });
 }
@@ -620,8 +650,8 @@ function shoveHeld(p) {
   return !!remoteIn.shove;
 }
 function tryShove(p, other) {
-  if (p.cd > 0 || !p.alive || mode !== "play") return;
-  if (!shoveHeld(p)) return;
+  if (p.cd > 0 || !p.alive || mode !== "play" || hitstop > 0) return null;
+  if (!shoveHeld(p)) return null;
   p.cd = SHOVE_CD; p.shoving = 0.14;
   let dir = dirFor(p);
   if (!dir.x && !dir.y) dir = { x: Math.cos(p.facing), y: Math.sin(p.facing) };
@@ -633,8 +663,9 @@ function tryShove(p, other) {
     other.vx += hit.x * SHOVE_HIT; other.vy += hit.y * SHOVE_HIT;
     other.hit = 0.16;
     addImpact((p.x + other.x) / 2, (p.y + other.y) / 2, hit.x, hit.y);
-    kickCam(hit.x, hit.y);
+    return hit;
   }
+  return null;
 }
 function stepPlayer(p, dt) {
   if (!p.alive) return;
@@ -681,7 +712,7 @@ function roundOver(loser) {
 }
 function packState() {
   const pack = p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, facing: p.facing, shoving: p.shoving, hit: p.hit, cd: p.cd, alive: p.alive });
-  return { p1: pack(p1), p2: pack(p2), s1: scores[0], s2: scores[1], mode, banner, bannerT, winner, camKick, camAng, impacts, want1: rematchYes[0], want2: rematchYes[1] };
+  return { p1: pack(p1), p2: pack(p2), s1: scores[0], s2: scores[1], mode, banner, bannerT, winner, camKick, camAng, impacts, want1: rematchYes[0], want2: rematchYes[1], hitstop };
 }
 function applyState(s) {
   hostSnap = s;
@@ -697,6 +728,9 @@ function applyState(s) {
   scores = [s.s1, s.s2];
   mode = s.mode; banner = s.banner; bannerT = s.bannerT; winner = s.winner;
   camKick = s.camKick || 0; camAng = s.camAng || 0;
+  const nextStop = s.hitstop || 0;
+  if (nextStop > 0.05 && hitstop <= 0) playBass();
+  hitstop = nextStop;
   impacts = Array.isArray(s.impacts) ? s.impacts.map(i => Object.assign({}, i)) : impacts;
   document.getElementById("s1").textContent = String(s.s1);
   document.getElementById("s2").textContent = String(s.s2);
@@ -888,17 +922,42 @@ function tick(t) {
   const dt = Math.min(0.033, (t - last) / 1000);
   last = t;
   if (slot === 1 && p1) {
-    decayFx(dt);
     if (mode === "breath") {
+      decayFx(dt);
       bannerT -= dt;
       if (bannerT <= 0) { mode = "play"; setBanner(""); }
-    }
-    if (mode === "play") {
-      tryShove(p1, p2); tryShove(p2, p1);
-      stepPlayer(p1, dt); stepPlayer(p2, dt); separate(p1, p2);
-      if (!p1.alive && !p2.alive) startBreath("Draw");
-      else if (!p1.alive) roundOver(p1);
-      else if (!p2.alive) roundOver(p2);
+    } else if (mode === "play") {
+      if (hitstop > 0) {
+        hitstop = Math.max(0, hitstop - dt);
+        if (p1) p1.cd = Math.max(0, p1.cd - dt);
+        if (p2) p2.cd = Math.max(0, p2.cd - dt);
+        if (hitstop <= 0) {
+          if (pendingKick) {
+            kickCam(pendingKick.x, pendingKick.y);
+            pendingKick = null;
+          }
+          stepPlayer(p1, dt); stepPlayer(p2, dt); separate(p1, p2);
+          if (!p1.alive && !p2.alive) startBreath("Draw");
+          else if (!p1.alive) roundOver(p1);
+          else if (!p2.alive) roundOver(p2);
+        }
+      } else {
+        decayFx(dt);
+        const a = tryShove(p1, p2), b = tryShove(p2, p1);
+        const hit = a || b;
+        if (hit) {
+          hitstop = HITSTOP;
+          pendingKick = hit;
+          playBass();
+        } else {
+          stepPlayer(p1, dt); stepPlayer(p2, dt); separate(p1, p2);
+          if (!p1.alive && !p2.alive) startBreath("Draw");
+          else if (!p1.alive) roundOver(p1);
+          else if (!p2.alive) roundOver(p2);
+        }
+      }
+    } else {
+      decayFx(dt);
     }
     snapAcc += dt;
     if (snapAcc >= 1 / SNAP_HZ) { snapAcc = 0; send({ t: "state", ...packState() }); }
@@ -906,7 +965,7 @@ function tick(t) {
     decayFx(dt);
     const k = 1 - Math.exp(-18 * dt);
     if (hostSnap && p1 && p2) { lerpToward(p1, hostSnap.p1, k); lerpToward(p2, hostSnap.p2, k); }
-    if (p2 && p2.alive && mode === "play") {
+    if (p2 && p2.alive && mode === "play" && hitstop <= 0) {
       const dir = localDir();
       if (dir.x || dir.y) p2.facing = Math.atan2(dir.y, dir.x);
       p2.vx += dir.x * SPEED * dt * 6; p2.vy += dir.y * SPEED * dt * 6;
