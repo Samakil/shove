@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Shove: Drain · Static Crown</title>
+<title>Shove · Static Crown</title>
 <meta name="author" content="Static Crown">
 <link rel="stylesheet" href="styles.css">
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
   <h1>Shove</h1>
-  <p class="sub pitch">First to 3. Stay dry. Shove them into the rising water.</p>
+  <p class="sub pitch">First to 3. Knock them off the stage.</p>
   <div id="lobby" class="lobby">
     <div id="lobbyStart">
       <button type="button" id="create">Create room</button>
@@ -20,7 +20,7 @@
       </div>
     </div>
     <div class="codebig" id="codebig" hidden></div>
-    <p class="sub" id="wait" hidden>You are host · P1. Hands appear when player 2 joins.</p>
+    <p class="sub" id="wait" hidden>You are host · P1. Waiting for player 2.</p>
     <button type="button" class="ghost" id="copylink" hidden>Copy link</button>
     <button type="button" class="ghost" id="cancelroom" hidden>Cancel room</button>
     <div class="err" id="err"></div>
@@ -40,11 +40,10 @@
       <span class="room-controls"><span id="roomhud"></span><button type="button" class="leave-room" id="leave">Leave</button></span>
     </div>
     <div id="endplay">
-      <p class="again" id="again">Again?</p>
-      <p class="again" id="waitstatus">Waiting</p>
+      <p class="status" id="waitstatus">Waiting</p>
       <div class="endbtns" id="offerbtns">
         <button id="rematch" type="button">Rematch</button>
-        <button id="newfight" type="button" class="ghost">New fight</button>
+        <button id="newfight" type="button" class="ghost">Leave</button>
       </div>
       <div class="endbtns" id="replybtns">
         <button id="accept" type="button">Accept</button>

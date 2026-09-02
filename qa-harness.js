@@ -7,9 +7,10 @@ const script = fs.readFileSync('game.js', 'utf8');
 assert.match(html, /<link rel="stylesheet" href="styles\.css">/, 'page should load the extracted stylesheet');
 assert.match(html, /<script src="game\.js"><\/script>/, 'page should load the extracted game logic');
 assert.ok(fs.readFileSync('styles.css', 'utf8').includes('.lobby'), 'stylesheet should contain the game layout');
-assert.ok(fs.statSync('assets/hand_sheet.png').size > 1000, 'Drain hand animation sheet should be present');
 assert.match(html, /id="cancelroom"/, 'waiting hosts should have a cancel-room control');
 assert.match(html, /id="leave"/, 'players should have a leave-room control');
+assert.doesNotMatch(html, /Again\?/, 'end screen should not show an Again heading');
+assert.match(html, /id="newfight"[^>]*>Leave<\/button>/, 'end screen should offer Leave');
 
 function classList() {
   const values = new Set();
@@ -104,6 +105,11 @@ assert.equal(second.closed, true, 'extra guest should be rejected');
 assert.equal(vm.runInContext('conn', context), first, 'extra guest must not replace active guest');
 assert.ok(second.sent.some(msg => msg.t === 'reject' && msg.reason === 'full'), 'extra guest should receive a room-full reason');
 
+vm.runInContext('mode = "over"; rematchYes = [false, false]; iSaidYes = false; declinedBy = 0; showEndplay(true); wantRematch(2)', context);
+assert.equal(els.endplay.classList.contains('reply'), true, 'a remote rematch request should show Accept and Decline');
+els.accept.onclick();
+assert.equal(vm.runInContext('mode', context), 'breath', 'accepting a rematch should start a fresh match');
+
 vm.runInContext('mode = "play"; onMsg({t:"in", x:Infinity, y:"bad", shove:true})', context);
 const remote = vm.runInContext('remoteIn', context);
 assert.ok(Number.isFinite(remote.x) && Number.isFinite(remote.y), 'remote movement must stay finite');
@@ -185,17 +191,6 @@ assert.equal(safeState.s1, 3, 'score should be clamped to the winning limit');
 assert.equal(safeState.s2, 0, 'negative score should be clamped');
 assert.equal(safeState.impacts.length, 24, 'impact payload should be bounded');
 assert.equal(safeState.banner.length, 80, 'banner payload should be bounded');
-assert.equal(safeState.stageR, 168, 'missing Drain radius should fall back safely');
-
-vm.runInContext('stageR = STAGE_START_R; roundElapsed = 0; advanceDrain(DRAIN_TIME / 2)', context);
-assert.equal(vm.runInContext('stageR', context), 132, 'Drain should close halfway after half the round timer');
-vm.runInContext('advanceDrain(DRAIN_TIME * 2)', context);
-assert.equal(vm.runInContext('stageR', context), 96, 'Drain should stop at its minimum playable radius');
-vm.runInContext('startBreath("Shove")', context);
-assert.equal(vm.runInContext('stageR', context), 168, 'each round should restore the dry stage');
-assert.equal(vm.runInContext('handFrame({shoving:SHOVE_ANIM})', context), 3, 'shove input should show the strike pose immediately');
-assert.equal(vm.runInContext('handFrame({shoving:SHOVE_ANIM * 0.2})', context), 5, 'shove animation should settle after the strike');
-assert.equal(vm.runInContext('handFrame({shoving:0})', context), 0, 'idle hand should return to rest');
 
 context.Peer = FakePeer;
 vm.runInContext('newFight(); hostRoom("CANC")', context);
