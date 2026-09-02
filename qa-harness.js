@@ -7,6 +7,7 @@ const script = fs.readFileSync('game.js', 'utf8');
 assert.match(html, /<link rel="stylesheet" href="styles\.css">/, 'page should load the extracted stylesheet');
 assert.match(html, /<script src="game\.js"><\/script>/, 'page should load the extracted game logic');
 assert.ok(fs.readFileSync('styles.css', 'utf8').includes('.lobby'), 'stylesheet should contain the game layout');
+assert.ok(fs.statSync('assets/hand_sheet.png').size > 1000, 'Drain hand animation sheet should be present');
 
 function classList() {
   const values = new Set();
@@ -29,10 +30,12 @@ function element(id) {
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
 const els = Object.fromEntries(ids.map(id => [id, element(id)]));
 els.codein.tagName = 'INPUT';
-els.c.getContext = () => ({
+const fakeContext = () => ({
   clearRect(){}, save(){}, restore(){}, translate(){}, rotate(){}, scale(){}, beginPath(){}, moveTo(){}, lineTo(){}, stroke(){}, arc(){}, ellipse(){}, fill(){}, clip(){},
-  createRadialGradient(){ return {addColorStop(){}}; }
+  fillRect(){}, drawImage(){}, createRadialGradient(){ return {addColorStop(){}}; }
 });
+els.c.getContext = fakeContext;
+class FakeImage { set src(value) { this.currentSrc = value; } }
 
 class FakeConn {
   constructor() { this.open = false; this.handlers = {}; this.closed = false; this.sent = []; this.throwOnSend = false; }
@@ -63,10 +66,11 @@ function runTimersThrough(maxDelay) {
   }
 }
 const context = vm.createContext({
-  console, Peer: FakePeer, URL, URLSearchParams, Math, JSON, performance: {now:()=>0},
+  console, Peer: FakePeer, Image: FakeImage, URL, URLSearchParams, Math, JSON, performance: {now:()=>0},
   document: {
     body: els.body || element('body'), visibilityState: 'visible',
-    getElementById: id => els[id], querySelector: sel => sel.startsWith('#') ? els[sel.slice(1)] : null
+    getElementById: id => els[id], querySelector: sel => sel.startsWith('#') ? els[sel.slice(1)] : null,
+    createElement(tag) { const el = element(tag); if (tag === 'canvas') el.getContext = fakeContext; return el; }
   },
   location: {href:'https://example.test/shove/'}, history: {replaceState(){}},
   navigator: {maxTouchPoints:0, clipboard:{writeText:()=>Promise.resolve()}},
@@ -177,6 +181,14 @@ assert.equal(safeState.s1, 3, 'score should be clamped to the winning limit');
 assert.equal(safeState.s2, 0, 'negative score should be clamped');
 assert.equal(safeState.impacts.length, 24, 'impact payload should be bounded');
 assert.equal(safeState.banner.length, 80, 'banner payload should be bounded');
+assert.equal(safeState.stageR, 168, 'missing Drain radius should fall back safely');
+
+vm.runInContext('stageR = STAGE_START_R; roundElapsed = 0; advanceDrain(DRAIN_TIME / 2)', context);
+assert.equal(vm.runInContext('stageR', context), 132, 'Drain should close halfway after half the round timer');
+vm.runInContext('advanceDrain(DRAIN_TIME * 2)', context);
+assert.equal(vm.runInContext('stageR', context), 96, 'Drain should stop at its minimum playable radius');
+vm.runInContext('startBreath("Shove")', context);
+assert.equal(vm.runInContext('stageR', context), 168, 'each round should restore the dry stage');
 
 vm.runInContext('Peer = undefined; peer = null; hostRoom("WXYZ")', context);
 assert.match(els.err.textContent, /failed to load/i, 'missing PeerJS should show a useful error');
