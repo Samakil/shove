@@ -834,15 +834,16 @@ function applyState(s) {
   if (s.want2 != null) rematchYes[1] = !!s.want2;
   if (slot === 1 && iSaidYes) rematchYes[0] = true;
   if (slot === 2 && iSaidYes) rematchYes[1] = true;
-  if (s.declinedBy != null) declinedBy = s.declinedBy || 0;
+  if (s.declinedBy) declinedBy = s.declinedBy;
   if (declinedBy === slot) showDeclined();
   else if (declinedBy && declinedBy !== slot) showTheyLeft();
   else if (mode === "over" && banner === "They left") showTheyLeft();
   else if (mode === "over" && banner === "That's 3") {
     const el = document.getElementById("endplay");
     el.classList.add("show");
-    el.classList.remove("left", "declined");
-    syncEndChrome();
+    el.classList.remove("left");
+    if (el.classList.contains("declined")) showDeclined();
+    else syncEndChrome();
   } else {
     showEndplay(false);
   }
